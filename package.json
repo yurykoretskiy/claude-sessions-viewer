@@ -2,7 +2,7 @@
   "name": "claude-sessions",
   "displayName": "Claude Sessions",
   "description": "Browse Claude Code sessions grouped by project folder; right-click any folder to start a Claude session there.",
-  "version": "0.2.1",
+  "version": "1.0.0",
   "publisher": "yury",
   "license": "MIT",
   "engines": {
