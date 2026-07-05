@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>POC — Claude Sessions grouping toggle</title>
+<style>
+  :root {
+    --bg: #1e1e1e; --sidebar: #252526; --hover: #2a2d2e; --sel: #094771;
+    --fg: #cccccc; --dim: #8a8a8a; --accent: #e8a33d; --blue: #4fc1ff;
+    --border: #3c3c3c; --badge: #4d4d4d;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 13px/1.5 -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
+         display: flex; gap: 28px; padding: 28px; flex-wrap: wrap; }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  .explain { max-width: 420px; }
+  .explain p { color: var(--dim); }
+  .explain b { color: var(--fg); }
+  .moved { color: var(--accent); font-weight: 600; }
+  kbd { background: var(--badge); border-radius: 3px; padding: 0 5px; font-size: 11px; }
+
+  .sidebar { width: 340px; background: var(--sidebar); border: 1px solid var(--border);
+             border-radius: 6px; overflow: hidden; flex-shrink: 0; }
+  .titlebar { display: flex; align-items: center; padding: 6px 10px;
+              border-bottom: 1px solid var(--border); font-size: 11px;
+              letter-spacing: .08em; color: var(--dim); }
+  .titlebar .label { flex: 1; }
+  .titlebar button { background: none; border: none; color: var(--fg); cursor: pointer;
+                     font-size: 14px; padding: 2px 6px; border-radius: 4px; }
+  .titlebar button:hover { background: var(--hover); }
+  .modebadge { font-size: 10px; background: var(--badge); border-radius: 8px;
+               padding: 1px 8px; margin-right: 6px; text-transform: none;
+               letter-spacing: 0; }
+  .modebadge.smart { background: #1f4d2e; color: #8fdc9f; }
+  .modebadge.raw { background: #4d3a1f; color: #e8c98f; }
+
+  .row { display: flex; align-items: center; padding: 3px 10px; cursor: pointer;
+         white-space: nowrap; overflow: hidden; }
+  .row:hover { background: var(--hover); }
+  .row .chev { width: 16px; color: var(--dim); font-size: 10px; flex-shrink: 0; }
+  .row .icon { width: 20px; flex-shrink: 0; }
+  .row .name { overflow: hidden; text-overflow: ellipsis; }
+  .row .count { margin-left: auto; color: var(--dim); font-size: 11px; padding-left: 8px; }
+  .folder .name { color: var(--fg); }
+  .session { padding-left: 28px; }
+  .session .name { color: #b8b8b8; font-size: 12.5px; }
+  .session .age { margin-left: auto; color: var(--dim); font-size: 11px; padding-left: 8px; }
+  .session.hl .name { color: var(--accent); }
+  .session .approx { color: var(--blue); margin-left: 4px; }
+  .hidden { display: none; }
+  .note { padding: 8px 12px; color: var(--dim); font-size: 11px; border-top: 1px solid var(--border); }
+  .note .moved { font-weight: 400; }
+</style>
+</head>
+<body>
+
+<div class="explain">
+  <h1>POC — grouping toggle on the sessions tree</h1>
+  <p>This mocks the VS Code sidebar. Press the <kbd>⇄</kbd> button in the
+     tree's title bar (top-right of the panel) to flip between the two views.
+     <b>Same sessions, two groupings.</b></p>
+  <p><b>Smart</b> — sessions started at the workspace root get re-filed under
+     the folder they actually worked in, marked
+     <span style="color:var(--blue)">≈</span>. Only truly unplaceable ones
+     stay in <b>root (unassigned)</b>.</p>
+  <p><b>Raw Claude index</b> — exactly Claude's own bookkeeping: a session is
+     filed under the directory where it was <i>started</i>, nothing else.
+     The root pile grows because every session you launched from the
+     workspace root lands there, even if it spent all day inside
+     <span class="moved">cu-launcher/</span>.</p>
+  <p>The <span class="moved">orange sessions</span> are the ones that move
+     between the two views — watch them jump when you toggle.</p>
+  <p style="color:var(--dim); font-size:11px">Data below is your real index
+     (subset): 140 sessions, 05 Jul 2026.</p>
+</div>
+
+<div class="sidebar">
+  <div class="titlebar">
+    <span class="label">CLAUDE SESSIONS: SESSIONS BY FOLDER</span>
+    <span id="badge" class="modebadge smart">smart</span>
+    <button id="toggle" title="Toggle grouping (smart ↔ raw Claude index)">⇄</button>
+    <button title="Refresh">⟳</button>
+  </div>
+  <div id="tree"></div>
+  <div class="note" id="note"></div>
+</div>
+
+<script>
+// ── real subset of the indexed data ──────────────────────────────────────
+// home = where Claude's own index files it (start dir)
+// smart = where the smart view shows it (approx = attributed by content)
+const S = (title, age, home, smart, approx=false, hl=false) =>
+  ({ title, age, home, smart, approx, hl });
+
+const sessions = [
+  S("Review autoKeepAwake feature for security", "2d", "caffeine-menu-bar", "caffeine-menu-bar"),
+  S("Review icon implementation security changes", "4d", "caffeine-menu-bar", "caffeine-menu-bar"),
+  S("Security review of build script changes", "5d", "caffeine-menu-bar", "caffeine-menu-bar"),
+  S("Review Telegram web blob reference", "1d", "trendwatching-course", "trendwatching-course"),
+  S("Create hyperframes video", "3d", "trendwatching-course", "trendwatching-course"),
+  S("Integrate Mistral API for OCR processing", "6d", "hermes", "hermes"),
+  S("Review mistral-ocr security vulnerabilities", "6d", "hermes", "hermes"),
+  S("Transfer project files from main repo", "8d", "cu-launcher", "cu-launcher"),
+  S("Review cu-launcher app for security", "9d", "cu-launcher", "cu-launcher"),
+  // ↓ started at ROOT, worked in a subfolder → move between views
+  S("Identify terminal command cu application", "7d", "ROOT", "cu-launcher", true, true),
+  S("Identify terminal command cu application (2)", "7d", "ROOT", "cu-launcher", true, true),
+  S("Set up Cloudflare email forwarding", "12d", "ROOT", "docs", true, true),
+  S("Find sessions about inputs and findings", "13d", "ROOT", "docs", true, true),
+  // ↓ started at ROOT, no dominant folder → unassigned in both views
+  S("Fable capabilities compared to GPT", "3d", "ROOT", "ROOT"),
+  S("Chat with Claude from VS Code", "5h", "ROOT", "ROOT"),
+  S("Second opinion for Codex comparison", "2d", "ROOT", "ROOT"),
+  // ↓ outside the workspace
+  S("Explore Matt's GitHub skills repository", "20d", "~/Documents/ais", "~/Documents/ais"),
+];
+
+const FOLDER_LABELS = {
+  ROOT_smart: "root (unassigned)",
+  ROOT_raw: "~/yury-vibe-coding  (root)",
+};
+
+let mode = "smart";
+const open = new Set(["cu-launcher", "ROOT", "docs"]); // pre-expanded for the demo
+
+function groupsFor(mode) {
+  const map = new Map();
+  for (const s of sessions) {
+    const key = mode === "smart" ? s.smart : s.home;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(s);
+  }
+  return [...map.entries()].sort((a, b) => b[1].length - a[1].length);
+}
+
+function label(key) {
+  if (key === "ROOT") return FOLDER_LABELS["ROOT_" + mode];
+  return key;
+}
+
+function render() {
+  const tree = document.getElementById("tree");
+  tree.innerHTML = "";
+  for (const [key, list] of groupsFor(mode)) {
+    const f = document.createElement("div");
+    f.className = "row folder";
+    const isOpen = open.has(key);
+    f.innerHTML = `<span class="chev">${isOpen ? "▾" : "▸"}</span>` +
+      `<span class="icon">${key === "ROOT" ? "🗂" : "📁"}</span>` +
+      `<span class="name">${label(key)}</span><span class="count">${list.length}</span>`;
+    f.onclick = () => { isOpen ? open.delete(key) : open.add(key); render(); };
+    tree.appendChild(f);
+    if (isOpen) {
+      for (const s of list) {
+        const r = document.createElement("div");
+        r.className = "row session" + (s.hl ? " hl" : "");
+        const approx = mode === "smart" && s.approx ? `<span class="approx">≈</span>` : "";
+        r.innerHTML = `<span class="icon">💬</span><span class="name">${s.title}${approx}</span>` +
+                      `<span class="age">${s.age}</span>`;
+        r.title = "click = resume in terminal (claude --resume …)";
+        tree.appendChild(r);
+      }
+    }
+  }
+  document.getElementById("badge").textContent = mode;
+  document.getElementById("badge").className = "modebadge " + mode;
+  document.getElementById("note").innerHTML = mode === "smart"
+    ? `smart: 4 <span class="moved">orange</span> sessions were rescued out of the root pile (≈ = attributed by transcript content)`
+    : `raw Claude index: the same 4 <span class="moved">orange</span> sessions sit in the root pile — that is how Claude itself files them`;
+}
+
+document.getElementById("toggle").onclick = () => {
+  mode = mode === "smart" ? "raw" : "smart";
+  render();
+};
+render();
+</script>
+</body>
+</html>

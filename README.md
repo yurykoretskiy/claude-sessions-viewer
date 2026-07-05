@@ -18,6 +18,26 @@ Explorer context menu. Built by Claude Code (`#claude`).
 - **Right-click any folder in the Explorer → "Claude: New session here"** —
   opens a terminal in that folder and runs `claude`. Also available on
   folder rows in the tree (+ icon).
+- **Right-click any folder → "Claude: New window session here (panel)"** —
+  opens the folder in a new VS Code window and auto-opens the official
+  Claude Code panel there (the panel always binds to the first workspace
+  folder, so a new window is the only way to get a panel session per
+  folder). Implemented via a flag file consumed by this extension's
+  instance in the new window on startup; the flag expires after 2 minutes.
+- **Grouping toggle** (⇄-style list icon in the view title): *smart*
+  (content attribution, default) ↔ *raw Claude index* (sessions grouped
+  exactly as Claude stores them, by starting directory). Choice persists.
+- Session rows show the short **session id** next to the age
+  (`2e0cc0a3 · 2h`); folders start expanded so the whole map is visible.
+- **Right-click any folder → "Claude: New window session here (panel)"** —
+  opens the folder in a new VS Code window and auto-opens the official
+  Claude Code panel there (the panel always binds to the first workspace
+  folder, so a new window is the only way to get a panel session per
+  folder). Implemented via a flag file consumed by this extension's
+  instance in the new window on startup.
+- **Grouping toggle** (list icon in the view title): *smart* (content
+  attribution, default) ↔ *raw Claude index* (sessions grouped exactly as
+  Claude stores them in `~/.claude/projects`, by starting directory).
 - Session context menu: open raw transcript `.jsonl`, copy session id.
 - Auto-refreshes when `~/.claude/projects` changes (5s debounce); manual
   refresh button in the view title.

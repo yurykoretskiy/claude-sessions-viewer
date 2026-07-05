@@ -2,7 +2,7 @@
   "name": "claude-sessions",
   "displayName": "Claude Sessions",
   "description": "Browse Claude Code sessions grouped by project folder; right-click any folder to start a Claude session there.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "yury",
   "license": "MIT",
   "engines": {
@@ -12,7 +12,9 @@
     "Other"
   ],
   "main": "./extension.js",
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -38,6 +40,16 @@
         "icon": "$(add)"
       },
       {
+        "command": "claudeSessions.newWindowHere",
+        "title": "Claude: New window session here (panel)",
+        "icon": "$(empty-window)"
+      },
+      {
+        "command": "claudeSessions.toggleGrouping",
+        "title": "Claude Sessions: Toggle grouping (smart ↔ raw Claude index)",
+        "icon": "$(list-tree)"
+      },
+      {
         "command": "claudeSessions.resume",
         "title": "Claude: Resume session"
       },
@@ -60,14 +72,24 @@
         {
           "command": "claudeSessions.newHere",
           "when": "explorerResourceIsFolder",
+          "group": "2_workspace@98"
+        },
+        {
+          "command": "claudeSessions.newWindowHere",
+          "when": "explorerResourceIsFolder",
           "group": "2_workspace@99"
         }
       ],
       "view/title": [
         {
+          "command": "claudeSessions.toggleGrouping",
+          "when": "view == claudeSessions.tree",
+          "group": "navigation@1"
+        },
+        {
           "command": "claudeSessions.refresh",
           "when": "view == claudeSessions.tree",
-          "group": "navigation"
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
@@ -75,6 +97,10 @@
           "command": "claudeSessions.newHere",
           "when": "view == claudeSessions.tree && viewItem == folder",
           "group": "inline"
+        },
+        {
+          "command": "claudeSessions.newWindowHere",
+          "when": "view == claudeSessions.tree && viewItem == folder"
         },
         {
           "command": "claudeSessions.openTranscript",

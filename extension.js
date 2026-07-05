@@ -33,6 +33,19 @@ class SessionTreeProvider {
     this.groups = []; // [{ label, folderPath, kind, sessions: [...] }]
     this.loaded = false;
     this.loading = null;
+    // 'smart' = attribute root sessions by transcript content;
+    // 'raw' = mirror Claude's own index (group by ~/.claude/projects dir).
+    this.groupMode = context.globalState.get('groupMode', 'smart');
+  }
+
+  toggleGrouping() {
+    this.groupMode = this.groupMode === 'smart' ? 'raw' : 'smart';
+    this.context.globalState.update('groupMode', this.groupMode);
+    vscode.window.setStatusBarMessage(
+      `Claude Sessions: ${this.groupMode === 'smart' ? 'smart folder attribution' : "raw Claude index"}`,
+      3000
+    );
+    this.refresh();
   }
 
   get cacheFile() {
@@ -90,7 +103,12 @@ class SessionTreeProvider {
           const root = this.workspaceRoot;
           const map = new Map();
           for (const s of sessions) {
-            const attr = this.attributeSession(s, root);
+            const attr =
+              this.groupMode === 'raw'
+                ? s.cwd
+                  ? { folderPath: s.cwd, label: shortHome(s.cwd), byContent: false }
+                  : null
+                : this.attributeSession(s, root);
             if (!attr) continue;
             const key = attr.folderPath + '::' + attr.label;
             if (!map.has(key)) {
@@ -126,7 +144,7 @@ class SessionTreeProvider {
   getTreeItem(element) {
     if (element.kind === 'folder') {
       const g = element.group;
-      const item = new vscode.TreeItem(g.label, vscode.TreeItemCollapsibleState.Collapsed);
+      const item = new vscode.TreeItem(g.label, vscode.TreeItemCollapsibleState.Expanded);
       item.description = `${g.sessions.length}`;
       item.iconPath = new vscode.ThemeIcon(g.label === 'root (unassigned)' ? 'inbox' : 'folder');
       item.contextValue = 'folder';
@@ -136,7 +154,7 @@ class SessionTreeProvider {
     const s = element.session;
     const title = s.title || s.firstPrompt || s.lastPrompt || s.id.slice(0, 8);
     const item = new vscode.TreeItem(title, vscode.TreeItemCollapsibleState.None);
-    item.description = relativeAge(s.lastTs) + (s.byContent ? ' ≈' : '');
+    item.description = `${s.id.slice(0, 8)} · ${relativeAge(s.lastTs)}${s.byContent ? ' ≈' : ''}`;
     item.iconPath = new vscode.ThemeIcon('comment-discussion');
     item.contextValue = 'session';
     item.tooltip = new vscode.MarkdownString(
@@ -173,8 +191,28 @@ function activate(context) {
   });
   context.subscriptions.push(view);
 
+  const panelFlagFile = path.join(context.globalStorageUri.fsPath, 'open-panel-flag.json');
+
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeSessions.refresh', () => provider.refresh()),
+
+    vscode.commands.registerCommand('claudeSessions.toggleGrouping', () => provider.toggleGrouping()),
+
+    vscode.commands.registerCommand('claudeSessions.newWindowHere', async (arg) => {
+      let folderPath = null;
+      if (arg && arg.fsPath) folderPath = arg.fsPath;
+      else if (arg && arg.kind === 'folder') folderPath = arg.group.folderPath;
+      if (!folderPath) return;
+      // Leave a note for the extension instance in the new window: it should
+      // open the Claude panel once that window (rooted at folderPath) starts.
+      try {
+        fs.mkdirSync(path.dirname(panelFlagFile), { recursive: true });
+        fs.writeFileSync(panelFlagFile, JSON.stringify({ folder: folderPath, ts: Date.now() }));
+      } catch {}
+      await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(folderPath), {
+        forceNewWindow: true,
+      });
+    }),
 
     vscode.commands.registerCommand('claudeSessions.newHere', (arg) => {
       let folderPath = null;
@@ -200,6 +238,31 @@ function activate(context) {
       vscode.window.showInformationMessage(`Copied session id ${node.session.id}`);
     })
   );
+
+  // If a "new window session here" note was left for this window, consume it
+  // and open the Claude panel (this window is rooted at the requested folder,
+  // so the official extension attaches its session there).
+  try {
+    const flag = JSON.parse(fs.readFileSync(panelFlagFile, 'utf8'));
+    if (flag.folder === provider.workspaceRoot && Date.now() - flag.ts < 120000) {
+      fs.unlinkSync(panelFlagFile);
+      setTimeout(async () => {
+        try {
+          await vscode.commands.executeCommand('claude-vscode.newConversation');
+        } catch {
+          try {
+            await vscode.commands.executeCommand('claude-vscode.editor.open');
+          } catch {
+            vscode.window.showWarningMessage(
+              'Claude Sessions: could not open the Claude Code panel (is the Claude Code extension installed?)'
+            );
+          }
+        }
+      }, 1500);
+    } else if (Date.now() - flag.ts >= 120000) {
+      fs.unlinkSync(panelFlagFile);
+    }
+  } catch {}
 
   // Auto-refresh when session files change (debounced).
   try {
