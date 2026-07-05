@@ -1,0 +1,90 @@
+{
+  "name": "claude-sessions",
+  "displayName": "Claude Sessions",
+  "description": "Browse Claude Code sessions grouped by project folder; right-click any folder to start a Claude session there.",
+  "version": "0.1.0",
+  "publisher": "yury",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "claudeSessions",
+          "title": "Claude Sessions",
+          "icon": "assets/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "claudeSessions": [
+        {
+          "id": "claudeSessions.tree",
+          "name": "Sessions by Folder"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "claudeSessions.newHere",
+        "title": "Claude: New session here",
+        "icon": "$(add)"
+      },
+      {
+        "command": "claudeSessions.resume",
+        "title": "Claude: Resume session"
+      },
+      {
+        "command": "claudeSessions.refresh",
+        "title": "Claude Sessions: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "claudeSessions.openTranscript",
+        "title": "Claude: Open transcript (.jsonl)"
+      },
+      {
+        "command": "claudeSessions.copySessionId",
+        "title": "Claude: Copy session id"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "claudeSessions.newHere",
+          "when": "explorerResourceIsFolder",
+          "group": "2_workspace@99"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "claudeSessions.refresh",
+          "when": "view == claudeSessions.tree",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "claudeSessions.newHere",
+          "when": "view == claudeSessions.tree && viewItem == folder",
+          "group": "inline"
+        },
+        {
+          "command": "claudeSessions.openTranscript",
+          "when": "view == claudeSessions.tree && viewItem == session"
+        },
+        {
+          "command": "claudeSessions.copySessionId",
+          "when": "view == claudeSessions.tree && viewItem == session"
+        }
+      ]
+    }
+  }
+}
