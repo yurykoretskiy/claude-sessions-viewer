@@ -136,6 +136,29 @@ class SessionTreeProvider {
     await this.loading;
   }
 
+  displayTitle(s) {
+    const custom = this.context.globalState.get('customTitles', {})[s.id];
+    return custom || s.title || s.firstPrompt || s.lastPrompt || s.id.slice(0, 8);
+  }
+
+  async rename(node) {
+    const s = node.session;
+    const titles = { ...this.context.globalState.get('customTitles', {}) };
+    const value = await vscode.window.showInputBox({
+      prompt: 'Custom session title (leave empty to restore the original)',
+      value: titles[s.id] || s.title || '',
+    });
+    if (value === undefined) return; // cancelled
+    if (value.trim()) titles[s.id] = value.trim();
+    else delete titles[s.id];
+    await this.context.globalState.update('customTitles', titles);
+    this._onDidChangeTreeData.fire();
+  }
+
+  allSessions() {
+    return this.groups.flatMap((g) => g.sessions.map((s) => ({ session: s, group: g })));
+  }
+
   async getChildren(element) {
     await this.ensureLoaded();
     if (!element) {
@@ -143,6 +166,9 @@ class SessionTreeProvider {
     }
     if (element.kind === 'folder') {
       return element.group.sessions.map((s) => ({ kind: 'session', session: s, group: element.group }));
+    }
+    if (element.kind === 'session') {
+      return (element.session.prompts || []).map((p, i) => ({ kind: 'prompt', text: p, index: i }));
     }
     return [];
   }
@@ -157,9 +183,24 @@ class SessionTreeProvider {
       item.tooltip = g.folderPath;
       return item;
     }
+    if (element.kind === 'prompt') {
+      const item = new vscode.TreeItem('  ' + element.text, vscode.TreeItemCollapsibleState.None);
+      item.iconPath = new vscode.ThemeIcon('arrow-small-right');
+      item.tooltip = element.text;
+      item.contextValue = 'prompt';
+      item.description = `#${element.index + 1}`;
+      return item;
+    }
     const s = element.session;
-    const title = s.title || s.firstPrompt || s.lastPrompt || s.id.slice(0, 8);
-    const item = new vscode.TreeItem(title, vscode.TreeItemCollapsibleState.None);
+    const title = this.displayTitle(s);
+    // Em-space padding: VS Code has no per-item indent API, and sessions at
+    // the default tree indent read as siblings of the folders.
+    const item = new vscode.TreeItem(
+      '  ' + title,
+      s.prompts && s.prompts.length
+        ? vscode.TreeItemCollapsibleState.Collapsed
+        : vscode.TreeItemCollapsibleState.None
+    );
     item.description = `${s.id.slice(0, 8)} · ${relativeAge(s.lastTs)}${s.byContent ? ' ≈' : ''}`;
     item.iconPath = new vscode.ThemeIcon('comment-discussion');
     item.contextValue = 'session';
@@ -173,11 +214,8 @@ class SessionTreeProvider {
         s.lastPrompt ? `last prompt: ${s.lastPrompt.slice(0, 200)}` : '',
       ].join('\n')
     );
-    item.command = {
-      command: 'claudeSessions.resume',
-      title: 'Resume',
-      arguments: [element],
-    };
+    // No click command on purpose: clicking expands the session to preview
+    // its prompts. Resuming is explicit — the inline ▶ button or context menu.
     return item;
   }
 }
@@ -236,6 +274,27 @@ function activate(context) {
       const s = node.session;
       // Resume must run from the session's original cwd so `claude --resume` finds it.
       openClaudeTerminal(s.cwd, `claude · ${node.group.label}`, `claude --resume ${s.id}`);
+    }),
+
+    vscode.commands.registerCommand('claudeSessions.rename', (node) => provider.rename(node)),
+
+    vscode.commands.registerCommand('claudeSessions.search', async () => {
+      await provider.ensureLoaded();
+      const items = provider.allSessions().map((n) => ({
+        label: `$(comment-discussion) ${provider.displayTitle(n.session)}`,
+        description: `${n.group.label} · ${n.session.id.slice(0, 8)} · ${relativeAge(n.session.lastTs)}`,
+        detail: n.session.firstPrompt || n.session.lastPrompt || '',
+        node: n,
+      }));
+      const pick = await vscode.window.showQuickPick(items, {
+        placeHolder: 'Search sessions by title, prompt, folder, or id — Enter resumes',
+        matchOnDescription: true,
+        matchOnDetail: true,
+      });
+      if (pick) {
+        const s = pick.node.session;
+        openClaudeTerminal(s.cwd, `claude · ${pick.node.group.label}`, `claude --resume ${s.id}`);
+      }
     }),
 
     vscode.commands.registerCommand('claudeSessions.openTranscript', (node) => {

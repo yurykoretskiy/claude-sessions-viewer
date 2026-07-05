@@ -10,8 +10,13 @@ const readline = require('readline');
 
 const PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects');
 
+// Bump when the extracted shape changes so stale cache entries re-index.
+const INDEX_VERSION = 2;
+
 const RE_TIMESTAMP = /"timestamp":"([^"]+)"/;
 const RE_CWD = /"cwd":"([^"]+)"/;
+const MAX_PROMPTS = 300;
+const PROMPT_CHARS = 200;
 
 function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -28,6 +33,7 @@ async function indexSessionFile(filePath) {
     cwd: null,
     lastTs: null,
     folderMentions: {},
+    prompts: [],
   };
   let mentionRe = null;
 
@@ -69,10 +75,10 @@ async function indexSessionFile(filePath) {
         const obj = JSON.parse(line);
         if (obj.lastPrompt) result.lastPrompt = obj.lastPrompt;
       } catch {}
-    } else if (!result.firstPrompt && line.includes('"type":"user"') && line.length < 64 * 1024) {
+    } else if (line.includes('"type":"user"') && line.length < 64 * 1024) {
       try {
         const obj = JSON.parse(line);
-        if (obj.type === 'user' && obj.message && !obj.isSidechain) {
+        if (obj.type === 'user' && obj.message && !obj.isSidechain && !obj.isMeta) {
           const c = obj.message.content;
           let text = null;
           if (typeof c === 'string') text = c;
@@ -81,7 +87,9 @@ async function indexSessionFile(filePath) {
             if (t) text = t.text;
           }
           if (text && !text.startsWith('<')) {
-            result.firstPrompt = text.replace(/\s+/g, ' ').trim().slice(0, 120);
+            const clean = text.replace(/\s+/g, ' ').trim().slice(0, PROMPT_CHARS);
+            if (clean && result.prompts.length < MAX_PROMPTS) result.prompts.push(clean);
+            if (!result.firstPrompt) result.firstPrompt = clean.slice(0, 120);
           }
         }
       } catch {}
@@ -150,13 +158,13 @@ async function indexAll(cacheFile, onProgress) {
       continue;
     }
     const cached = cache[file];
-    if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+    if (cached && cached.v === INDEX_VERSION && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
       sessions.push(cached.data);
     } else {
       try {
         const data = await indexSessionFile(file);
         data.mtimeMs = stat.mtimeMs;
-        cache[file] = { mtimeMs: stat.mtimeMs, size: stat.size, data };
+        cache[file] = { v: INDEX_VERSION, mtimeMs: stat.mtimeMs, size: stat.size, data };
         sessions.push(data);
         dirty = true;
       } catch {}
