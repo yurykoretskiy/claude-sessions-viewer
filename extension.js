@@ -41,11 +41,17 @@ class SessionTreeProvider {
   toggleGrouping() {
     this.groupMode = this.groupMode === 'smart' ? 'raw' : 'smart';
     this.context.globalState.update('groupMode', this.groupMode);
-    vscode.window.setStatusBarMessage(
-      `Claude Sessions: ${this.groupMode === 'smart' ? 'smart folder attribution' : "raw Claude index"}`,
-      3000
-    );
+    this.updateModeUi();
     this.refresh();
+  }
+
+  // Persistent mode indicator: text next to the view title + which title
+  // button (list-tree vs list-flat icon) is shown via the context key.
+  updateModeUi() {
+    if (this.view) {
+      this.view.description = this.groupMode === 'smart' ? 'smart grouping' : 'raw Claude index';
+    }
+    vscode.commands.executeCommand('setContext', 'claudeSessions.mode', this.groupMode);
   }
 
   get cacheFile() {
@@ -190,6 +196,8 @@ function activate(context) {
     showCollapseAll: true,
   });
   context.subscriptions.push(view);
+  provider.view = view;
+  provider.updateModeUi();
 
   const panelFlagFile = path.join(context.globalStorageUri.fsPath, 'open-panel-flag.json');
 
@@ -197,6 +205,7 @@ function activate(context) {
     vscode.commands.registerCommand('claudeSessions.refresh', () => provider.refresh()),
 
     vscode.commands.registerCommand('claudeSessions.toggleGrouping', () => provider.toggleGrouping()),
+    vscode.commands.registerCommand('claudeSessions.toggleGroupingAlt', () => provider.toggleGrouping()),
 
     vscode.commands.registerCommand('claudeSessions.newWindowHere', async (arg) => {
       let folderPath = null;

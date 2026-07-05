@@ -2,7 +2,7 @@
   "name": "claude-sessions",
   "displayName": "Claude Sessions",
   "description": "Browse Claude Code sessions grouped by project folder; right-click any folder to start a Claude session there.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "yury",
   "license": "MIT",
   "engines": {
@@ -46,8 +46,13 @@
       },
       {
         "command": "claudeSessions.toggleGrouping",
-        "title": "Claude Sessions: Toggle grouping (smart ↔ raw Claude index)",
+        "title": "Claude Sessions: Grouping is SMART (folders re-attributed) — click for raw Claude index",
         "icon": "$(list-tree)"
+      },
+      {
+        "command": "claudeSessions.toggleGroupingAlt",
+        "title": "Claude Sessions: Grouping is RAW Claude index — click for smart attribution",
+        "icon": "$(list-flat)"
       },
       {
         "command": "claudeSessions.resume",
@@ -83,7 +88,12 @@
       "view/title": [
         {
           "command": "claudeSessions.toggleGrouping",
-          "when": "view == claudeSessions.tree",
+          "when": "view == claudeSessions.tree && claudeSessions.mode == 'smart'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "claudeSessions.toggleGroupingAlt",
+          "when": "view == claudeSessions.tree && claudeSessions.mode == 'raw'",
           "group": "navigation@1"
         },
         {
