@@ -6,6 +6,24 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.8.0] — 2026-07-06
+
+### Changed
+- **Calmer, truthful tree.** One spark folder icon for every group; the only
+  special mark is the project you currently have open (boxed icon), which is
+  now **pinned to the top** of the tree. The dashed "outside the workspace"
+  icon is gone — it marked ~95% of groups in a cross-project list.
+- Groups whose folder no longer exists on disk (e.g. a renamed/deleted
+  project) are marked `· gone` with an explanatory tooltip — their sessions
+  stay browsable as history.
+- README: new **How it works** section (where sessions come from, how
+  grouping works, exactly when the list refreshes, conversation freshness).
+
+### Removed
+- Personal working notes (handoffs, findings/inputs ledger, agent config,
+  backlog) are no longer tracked in the public repository; the packaged
+  extension never included them.
+
 ## [1.7.3] — 2026-07-06
 
 ### Changed

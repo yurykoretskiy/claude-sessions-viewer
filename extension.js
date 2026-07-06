@@ -163,6 +163,12 @@ class SessionTreeProvider {
             g.latest = g.sessions[0] ? g.sessions[0].lastTs || '' : '';
           }
           this.groups.sort((a, b) => b.latest.localeCompare(a.latest));
+          // The project you have open always sits on top — reveal and
+          // orientation start there; everything else stays recency-ordered.
+          if (root) {
+            const i = this.groups.findIndex((g) => g.folderPath === root);
+            if (i > 0) this.groups.unshift(this.groups.splice(i, 1)[0]);
+          }
           this.loaded = true;
           this.updateModeUi();
           this._onDidChangeTreeData.fire();
@@ -249,17 +255,23 @@ class SessionTreeProvider {
       const g = element.group;
       const item = new vscode.TreeItem(g.label, vscode.TreeItemCollapsibleState.Collapsed);
       item.id = 'f:' + g.folderPath + ':' + g.label;
-      item.description = `${g.sessions.length}`;
       const root = this.workspaceRoot;
-      const icon =
-        root && g.folderPath === root
-          ? 'folder-root.svg'
-          : root && !g.folderPath.startsWith(root)
-            ? 'folder-outside.svg'
-            : 'folder-spark.svg';
+      // One folder icon for everyone; the only special mark is the project
+      // you have open. A dashed "outside the workspace" icon marked ~95% of
+      // groups in a cross-project tree — noise, not signal.
+      const icon = root && g.folderPath === root ? 'folder-root.svg' : 'folder-spark.svg';
+      let exists = true;
+      try {
+        exists = fs.statSync(g.folderPath).isDirectory();
+      } catch {
+        exists = false;
+      }
+      item.description = exists ? `${g.sessions.length}` : `${g.sessions.length} · gone`;
       item.iconPath = vscode.Uri.joinPath(this.context.extensionUri, 'assets', icon);
       item.contextValue = 'folder';
-      item.tooltip = g.folderPath;
+      item.tooltip = exists
+        ? g.folderPath
+        : `${g.folderPath}\n\nThis folder no longer exists on disk — the sessions recorded here are kept as history.`;
       return item;
     }
     if (element.kind === 'prompt') {

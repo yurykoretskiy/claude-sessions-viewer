@@ -4,3 +4,13 @@ venv/
 __pycache__/
 .DS_Store
 *.vsix
+
+# Personal working notes / agent ledger — local only, never public
+handoffs/
+HANDOFF.md
+findings/
+findings-history.md
+inputs/
+input-history.md
+AGENTS.md
+BACKLOG.md

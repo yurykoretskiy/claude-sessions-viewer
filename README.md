@@ -47,12 +47,31 @@ into a browsable map.
 | --- | --- | --- |
 | ![Light](https://raw.githubusercontent.com/yurykoretskiy/claude-sessions-viewer/master/assets/screenshots/viewer-light.png) | ![Plain](https://raw.githubusercontent.com/yurykoretskiy/claude-sessions-viewer/master/assets/screenshots/plain-mode.png) | ![Filter](https://raw.githubusercontent.com/yurykoretskiy/claude-sessions-viewer/master/assets/screenshots/filter-user.png) |
 
+## How it works
+
+- **Where sessions come from.** Claude Code writes every conversation to a
+  transcript file under `~/.claude/projects/`. The extension reads those
+  files — it never runs Claude, never phones home, and needs no configuration.
+- **How grouping works.** Each transcript records the folder the session was
+  started in. Sessions are grouped by that folder, newest first inside each
+  group. The project you currently have open is pinned to the top with its
+  own icon. A folder marked `gone` no longer exists on disk — its sessions
+  are kept as browsable history.
+- **When the list updates.** There is no background watcher. The tree
+  re-indexes when the panel is opened or becomes visible again, when you
+  press the ↻ refresh button, and when you press reveal (✳). So a session
+  started in a new folder shows up the next time any of those happen.
+  Re-indexing is cheap: only changed transcripts are re-read.
+- **Conversations are always fresh.** Opening a session reads its transcript
+  from disk at that moment, and the review pane live-updates while the
+  session keeps writing.
+
 ## Install
 
 Grab the `.vsix` from [Releases](https://github.com/yurykoretskiy/claude-sessions-viewer/releases), then:
 
 ```bash
-code --install-extension claude-sessions-viewer-1.4.5.vsix
+code --install-extension claude-sessions-viewer-<version>.vsix
 ```
 
 Reload the window. A ✳ icon appears in the activity bar.
