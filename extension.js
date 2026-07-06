@@ -302,7 +302,7 @@ class SessionTreeProvider {
     item.id = 's:' + s.id;
     const live = s.mtimeMs && Date.now() - s.mtimeMs < 5 * 60 * 1000 ? '● ' : '';
     item.description = `${live}${s.id.slice(0, 8)} · ${relativeAge(s.lastTs)}${s.byContent ? ' ≈' : ''}`;
-    item.iconPath = new vscode.ThemeIcon('comment-discussion');
+    // No icon on session rows — the space goes to the session title instead.
     item.contextValue = 'session';
     item.tooltip = new vscode.MarkdownString(
       [

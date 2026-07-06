@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+  :root{--spark:M12 1.6l2.1 6.9a3 3 0 0 0 2 2l6.9 2.1-6.9 2.1a3 3 0 0 0-2 2L12 23.4l-2.1-6.9a3 3 0 0 0-2-2L1 14.6l6.9-2.1a3 3 0 0 0 2-2z}
+  body{margin:0;background:#0b0b0b;font:13px -apple-system,"SF Pro Text",sans-serif;color:#ccc;padding:24px;display:flex;gap:30px;align-items:flex-start}
+  .col{display:flex;flex-direction:column;gap:10px;align-items:center}
+  .cap{color:#8a8a8a;font-size:12px}
+  /* activity bar mock */
+  .rail{width:48px;background:#333333;border-radius:8px;padding:8px 0;display:flex;flex-direction:column;align-items:center;gap:14px}
+  .rail .i{width:24px;height:24px;color:#858585;display:flex;align-items:center;justify-content:center}
+  .rail .i svg{width:22px;height:22px}
+  .rail .i.active{color:#fff;position:relative}
+  .rail .i.active::before{content:"";position:absolute;left:-12px;top:-3px;height:28px;width:2px;background:#d97757;border-radius:2px}
+  /* top title bar mock */
+  .titlebar{background:#252526;border-radius:8px;display:flex;align-items:center;padding:8px 12px;gap:16px;width:360px}
+  .titlebar .tab{color:#ccc;font-size:12.5px;flex:1;display:flex;align-items:center;gap:7px}
+  .titlebar .tab .sp{color:#d97757}
+  .titlebar .btn{width:20px;height:20px;color:#c9c9c9}
+  .titlebar .btn.accent{color:#d97757}
+  .titlebar .btn svg{width:18px;height:18px}
+  /* marketplace tile */
+  .tile{width:96px;height:96px;border-radius:20px;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.5)}
+  .tile img{width:100%;height:100%}
+  .exrow{display:flex;gap:12px;align-items:center;background:#252526;border-radius:8px;padding:10px 12px;width:340px}
+  .exrow .name{font-weight:600;color:#fff;font-size:13px}
+  .exrow .pub{color:#8a8a8a;font-size:11.5px}
+</style></head>
+<body>
+  <div class="col">
+    <div class="rail">
+      <div class="i">▢</div>
+      <div class="i active"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 1.6l2.1 6.9a3 3 0 0 0 2 2l6.9 2.1-6.9 2.1a3 3 0 0 0-2 2L12 23.4l-2.1-6.9a3 3 0 0 0-2-2L1 14.6l6.9-2.1a3 3 0 0 0 2-2z"/></svg></div>
+      <div class="i">◷</div>
+      <div class="i">⚙</div>
+    </div>
+    <div class="cap">Left rail (active)</div>
+  </div>
+
+  <div class="col">
+    <div class="titlebar">
+      <div class="tab"><span class="sp">✳</span> Add Claude session…</div>
+      <div class="btn accent"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 1.6l2.1 6.9a3 3 0 0 0 2 2l6.9 2.1-6.9 2.1a3 3 0 0 0-2 2L12 23.4l-2.1-6.9a3 3 0 0 0-2-2L1 14.6l6.9-2.1a3 3 0 0 0 2-2z"/></svg></div>
+      <div class="btn">�&#x25B7;</div>
+    </div>
+    <div class="cap">Top: reveal button on the Claude tab</div>
+  </div>
+
+  <div class="col">
+    <div class="tile"><img src="icon.png"></div>
+    <div class="cap">Marketplace / Extensions list</div>
+  </div>
+</body>
+</html>

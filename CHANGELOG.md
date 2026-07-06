@@ -6,6 +6,12 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.5.1] — 2026-07-06
+
+### Changed
+- Removed the speech-bubble icon from session rows in the tree — the freed
+  space now goes to the session title.
+
 ## [1.5.0] — 2026-07-06
 
 ### Added
