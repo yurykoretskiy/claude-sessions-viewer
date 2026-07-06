@@ -2,7 +2,7 @@ const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { indexAll, PROJECTS_DIR } = require('./indexer');
+const { indexAll } = require('./indexer');
 const { ConversationViewer } = require('./viewer');
 
 const MIN_MENTIONS = 3; // content-attribution threshold for root-started sessions
@@ -537,15 +537,17 @@ function activate(context) {
     }
   } catch {}
 
-  // Auto-refresh when session files change (debounced).
-  try {
-    let timer = null;
-    const watcher = fs.watch(PROJECTS_DIR, { recursive: true }, () => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => provider.refresh(), 20000);
-    });
-    context.subscriptions.push({ dispose: () => watcher.close() });
-  } catch {}
+  // Refresh on demand only — when the panel becomes visible — rather than
+  // watching the filesystem on a timer. This keeps the tree order stable while
+  // you browse (no rows jumping as sessions write); the grouping and the
+  // newest→oldest-within-folder order are untouched. Locating a session and
+  // opening it still reads its transcript fresh from disk (see viewer.js), and
+  // the reveal command re-indexes before it locates the current session.
+  context.subscriptions.push(
+    view.onDidChangeVisibility((e) => {
+      if (e.visible) provider.refresh();
+    })
+  );
 }
 
 function deactivate() {}

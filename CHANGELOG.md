@@ -6,6 +6,17 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.7.0] — 2026-07-06
+
+### Changed
+- **Refresh is now on-demand, not background.** The filesystem watcher that
+  re-indexed every ~20s (which re-sorted the tree and made rows jump while you
+  were browsing) is gone. The list now refreshes only when the panel becomes
+  visible, when you click ↻, and when you press reveal. The grouping and the
+  newest→oldest-within-folder order are unchanged — the tree just holds still
+  while you locate a session. Opening a session still reads its transcript
+  fresh from disk and live-updates while open.
+
 ## [1.6.0] — 2026-07-06
 
 ### Changed
