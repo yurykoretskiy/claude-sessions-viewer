@@ -32,7 +32,11 @@ class ConversationViewer {
 
   get config() {
     const c = vscode.workspace.getConfiguration('claudeSessionsViewer');
-    return { theme: c.get('theme', 'system'), userLabel: c.get('userLabel', 'USER') };
+    return {
+      theme: c.get('theme', 'system'),
+      userLabel: c.get('userLabel', 'USER'),
+      liveRefresh: c.get('liveRefresh.enabled', false),
+    };
   }
 
   async open(session, title, folderLabel, opts = {}) {
@@ -51,28 +55,31 @@ class ConversationViewer {
     const entry = { panel, convo, session, title, folder: folderLabel };
     this.panels.set(session.id, entry);
 
-    // Live refresh: while the session keeps writing, re-extract (cheap,
-    // ≤200ms even for 50MB) and push updated messages into the webview.
     const fsMod = require('fs');
-    let refreshing = false;
-    const listener = async () => {
-      if (refreshing) return;
-      refreshing = true;
-      try {
-        entry.convo = await extractConversation(session.file);
-        panel.webview.postMessage({
-          type: 'update',
-          messages: entry.convo.messages,
-          firstTs: entry.convo.firstTs,
-          lastTs: entry.convo.lastTs,
-        });
-      } catch {}
-      refreshing = false;
-    };
-    fsMod.watchFile(session.file, { interval: 3000 }, listener);
+    let listener = null;
+    if (this.config.liveRefresh) {
+      // Optional live refresh: while the session keeps writing, re-extract
+      // and push updated messages into the webview.
+      let refreshing = false;
+      listener = async () => {
+        if (refreshing) return;
+        refreshing = true;
+        try {
+          entry.convo = await extractConversation(session.file);
+          panel.webview.postMessage({
+            type: 'update',
+            messages: entry.convo.messages,
+            firstTs: entry.convo.firstTs,
+            lastTs: entry.convo.lastTs,
+          });
+        } catch {}
+        refreshing = false;
+      };
+      fsMod.watchFile(session.file, { interval: 3000 }, listener);
+    }
 
     panel.onDidDispose(() => {
-      fsMod.unwatchFile(session.file, listener);
+      if (listener) fsMod.unwatchFile(session.file, listener);
       this.panels.delete(session.id);
     });
     panel.webview.onDidReceiveMessage((msg) => this.onMessage(entry, msg));
@@ -163,9 +170,11 @@ class ConversationViewer {
   .vrow { display:flex; align-items:center; gap:8px; }
   .spark { color:var(--accent); }
   .title { font-size:13px; font-weight:600; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .ibtn { border:none; background:transparent; color:var(--mut); font-size:14px; cursor:pointer; padding:2px 6px; border-radius:4px; }
+  .ibtn { border:1px solid transparent; background:transparent; color:var(--mut); font-size:14px; cursor:pointer; padding:2px 6px; border-radius:4px; }
   .ibtn:hover { background:var(--btn2); color:var(--fg); }
-  .ibtn.play { color:var(--accent); }
+  .ibtn.play { color:var(--accent); border-color:color-mix(in srgb, var(--accent) 55%, transparent);
+    background:color-mix(in srgb, var(--accent) 10%, transparent); font-weight:700; }
+  .ibtn.play:hover { color:#fff; background:var(--accent); border-color:var(--accent); }
   .dates { color:var(--mut); font-size:11px; margin-top:3px; }
   .details { display:none; color:var(--mut); font-size:11.5px; margin-top:4px; }
   .details.open { display:block; }

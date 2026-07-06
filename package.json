@@ -2,7 +2,7 @@
   "name": "claude-sessions-viewer",
   "displayName": "Claude Sessions Viewer",
   "description": "Browse Claude Code sessions grouped by project folder; right-click any folder to start a Claude session there.",
-  "version": "1.4.0",
+  "version": "1.4.5",
   "publisher": "yury",
   "license": "MIT",
   "engines": {
@@ -51,12 +51,12 @@
       },
       {
         "command": "claudeSessions.toggleGrouping",
-        "title": "Claude Sessions: Grouping is SMART (folders re-attributed) — click for raw Claude index",
+        "title": "Claude Sessions: Grouping by working folders — click for Claude raw storage",
         "icon": "$(list-tree)"
       },
       {
         "command": "claudeSessions.toggleGroupingAlt",
-        "title": "Claude Sessions: Grouping is RAW Claude index — click for smart attribution",
+        "title": "Claude Sessions: Grouping by Claude raw storage — click for working folders",
         "icon": "$(list-flat)"
       },
       {
@@ -143,16 +143,6 @@
           "group": "inline@1"
         },
         {
-          "command": "claudeSessions.resume",
-          "when": "view == claudeSessions.tree && viewItem == session",
-          "group": "inline@2"
-        },
-        {
-          "command": "claudeSessions.resume",
-          "when": "view == claudeSessions.tree && viewItem == session",
-          "group": "1_actions@1"
-        },
-        {
           "command": "claudeSessions.rename",
           "when": "view == claudeSessions.tree && viewItem == session",
           "group": "1_actions@2"
@@ -169,7 +159,7 @@
       "editor/title": [
         {
           "command": "claudeSessions.revealCurrent",
-          "when": "activeWebviewPanelId == 'claudeVSCodePanel'",
+          "when": "activeWebviewPanelId == 'claudeVSCodePanel' && config.claudeSessionsViewer.reveal.enabled",
           "group": "navigation@1"
         }
       ]
@@ -191,6 +181,26 @@
           "type": "string",
           "default": "USER",
           "description": "Label shown on your messages in the conversation viewer and in copies/exports."
+        },
+        "claudeSessionsViewer.reveal.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show and enable Reveal current session controls."
+        },
+        "claudeSessionsViewer.reveal.openConversation": {
+          "type": "boolean",
+          "default": true,
+          "description": "When revealing the current session, also open the read-only conversation viewer beside the active editor. New users see the review pane by default; switch this off for tree-only reveal."
+        },
+        "claudeSessionsViewer.liveRefresh.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Refresh an open conversation viewer while its transcript changes. Off by default to keep active sessions lighter."
+        },
+        "claudeSessionsViewer.promptChildren.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show user prompt/message preview rows under each session in the tree. Off by default for session-level browsing."
         }
       }
     }

@@ -26,6 +26,27 @@ function shortHome(p) {
   return p.startsWith(home) ? '~' + p.slice(home.length) : p;
 }
 
+function normalizeTitleForMatch(s) {
+  return String(s || '')
+    .replace(/^[*●✳✻\s]+/, '')
+    .replace(/\s+[—-]\s+.*$/, '')
+    .replace(/[.…]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function titleMatchScore(activeTitle, candidateTitle) {
+  const active = normalizeTitleForMatch(activeTitle);
+  const candidate = normalizeTitleForMatch(candidateTitle);
+  if (!active || !candidate) return 0;
+  if (active === candidate) return 1000 + candidate.length;
+  if (candidate.startsWith(active) || active.startsWith(candidate)) return 800 + Math.min(active.length, candidate.length);
+  if (active.length >= 10 && candidate.includes(active)) return 600 + active.length;
+  if (candidate.length >= 10 && active.includes(candidate)) return 500 + candidate.length;
+  return 0;
+}
+
 class SessionTreeProvider {
   constructor(context) {
     this.context = context;
@@ -43,6 +64,12 @@ class SessionTreeProvider {
     this.groupMode = this.groupMode === 'smart' ? 'raw' : 'smart';
     this.context.globalState.update('groupMode', this.groupMode);
     this.updateModeUi();
+    vscode.window.setStatusBarMessage(
+      this.groupMode === 'smart'
+        ? 'Claude Sessions: grouped by working folder; root sessions may be re-filed by touched paths.'
+        : 'Claude Sessions: grouped by Claude raw storage/cwd.',
+      3500
+    );
     this.refresh();
   }
 
@@ -50,7 +77,8 @@ class SessionTreeProvider {
   // button (list-tree vs list-flat icon) is shown via the context key.
   updateModeUi() {
     if (this.view) {
-      this.view.description = this.groupMode === 'smart' ? 'smart grouping' : 'raw Claude index';
+      const mode = this.groupMode === 'smart' ? 'working folders' : 'Claude raw storage';
+      this.view.description = this.loaded ? mode : `${mode} · indexing`;
     }
     vscode.commands.executeCommand('setContext', 'claudeSessions.mode', this.groupMode);
   }
@@ -64,10 +92,23 @@ class SessionTreeProvider {
     return ws && ws.length ? ws[0].uri.fsPath : null;
   }
 
+  get config() {
+    const c = vscode.workspace.getConfiguration('claudeSessionsViewer');
+    return {
+      promptChildren: c.get('promptChildren.enabled', false),
+      revealEnabled: c.get('reveal.enabled', true),
+      revealOpenConversation: c.get('reveal.openConversation', true),
+    };
+  }
+
   refresh() {
     this.loaded = false;
     this.loading = null;
     this._onDidChangeTreeData.fire();
+  }
+
+  loadingNode() {
+    return { kind: 'loading' };
   }
 
   attributeSession(s, root) {
@@ -103,10 +144,13 @@ class SessionTreeProvider {
   async ensureLoaded() {
     if (this.loaded) return;
     if (!this.loading) {
+      this.updateModeUi();
       this.loading = vscode.window.withProgress(
         { location: { viewId: 'claudeSessions.tree' }, title: 'Indexing Claude sessions…' },
         async () => {
-          const indexed = await indexAll(this.cacheFile);
+          const indexed = await indexAll(this.cacheFile, undefined, {
+            includePrompts: this.config.promptChildren,
+          });
           // Resuming a session from another directory copies its transcript
           // into that project dir — same session id in several files. Keep
           // the freshest copy only.
@@ -139,6 +183,7 @@ class SessionTreeProvider {
           }
           this.groups.sort((a, b) => b.latest.localeCompare(a.latest));
           this.loaded = true;
+          this.updateModeUi();
           this._onDidChangeTreeData.fire();
         }
       );
@@ -149,6 +194,23 @@ class SessionTreeProvider {
   displayTitle(s) {
     const custom = this.context.globalState.get('customTitles', {})[s.id];
     return custom || s.title || s.firstPrompt || s.lastPrompt || s.id.slice(0, 8);
+  }
+
+  titleCandidates(s) {
+    return [this.displayTitle(s), s.title, s.firstPrompt, s.lastPrompt, s.id].filter(Boolean);
+  }
+
+  findByActiveTabTitle(nodes, activeTabTitle) {
+    const scored = [];
+    for (const n of nodes) {
+      let score = 0;
+      for (const candidate of this.titleCandidates(n.session)) {
+        score = Math.max(score, titleMatchScore(activeTabTitle, candidate));
+      }
+      if (score > 0) scored.push({ node: n, score });
+    }
+    scored.sort((a, b) => b.score - a.score || (b.node.session.mtimeMs || 0) - (a.node.session.mtimeMs || 0));
+    return scored[0] ? scored[0].node : null;
   }
 
   async rename(node) {
@@ -166,7 +228,7 @@ class SessionTreeProvider {
   }
 
   allSessions() {
-    return this.groups.flatMap((g) => g.sessions.map((s) => ({ session: s, group: g })));
+    return this.groups.flatMap((g) => g.sessions.map((s) => ({ kind: 'session', session: s, group: g })));
   }
 
   getParent(element) {
@@ -176,7 +238,11 @@ class SessionTreeProvider {
   }
 
   async getChildren(element) {
-    await this.ensureLoaded();
+    if (!this.loaded) {
+      this.ensureLoaded().catch(() => {});
+      if (!element) return this.groups.length ? this.groups.map((g) => ({ kind: 'folder', group: g })) : [this.loadingNode()];
+      return [];
+    }
     if (!element) {
       return this.groups.map((g) => ({ kind: 'folder', group: g }));
     }
@@ -184,15 +250,23 @@ class SessionTreeProvider {
       return element.group.sessions.map((s) => ({ kind: 'session', session: s, group: element.group }));
     }
     if (element.kind === 'session') {
+      if (!this.config.promptChildren) return [];
       return (element.session.prompts || []).map((p, i) => ({ kind: 'prompt', text: p, index: i, parent: element }));
     }
     return [];
   }
 
   getTreeItem(element) {
+    if (element.kind === 'loading') {
+      const item = new vscode.TreeItem('Indexing Claude sessions...', vscode.TreeItemCollapsibleState.None);
+      item.iconPath = new vscode.ThemeIcon('loading~spin');
+      item.description = 'first run can take a moment';
+      item.contextValue = 'loading';
+      return item;
+    }
     if (element.kind === 'folder') {
       const g = element.group;
-      const item = new vscode.TreeItem(g.label, vscode.TreeItemCollapsibleState.Expanded);
+      const item = new vscode.TreeItem(g.label, vscode.TreeItemCollapsibleState.Collapsed);
       item.id = 'f:' + g.folderPath + ':' + g.label;
       item.description = `${g.sessions.length}`;
       const root = this.workspaceRoot;
@@ -221,7 +295,7 @@ class SessionTreeProvider {
     // the default tree indent read as siblings of the folders.
     const item = new vscode.TreeItem(
       '  ' + title,
-      s.prompts && s.prompts.length
+      this.config.promptChildren && s.prompts && s.prompts.length
         ? vscode.TreeItemCollapsibleState.Collapsed
         : vscode.TreeItemCollapsibleState.None
     );
@@ -258,6 +332,29 @@ function openClaudeTerminal(cwd, name, command) {
   return terminal;
 }
 
+async function maybeShowFirstRunReviewChoice(context) {
+  const key = 'welcome.reviewChoiceShown.v1';
+  if (context.globalState.get(key, false)) return;
+  const openReview = 'Open Review Pane';
+  const treeOnly = 'Tree Only';
+  const settings = 'Settings';
+  const choice = await vscode.window.showInformationMessage(
+    'Claude Sessions Viewer can reveal the current Claude tab in the tree and optionally open a read-only review pane. New users get the review pane by default; you can switch it off anytime.',
+    openReview,
+    treeOnly,
+    settings
+  );
+  const cfg = vscode.workspace.getConfiguration('claudeSessionsViewer');
+  if (choice === treeOnly) {
+    await cfg.update('reveal.openConversation', false, vscode.ConfigurationTarget.Global);
+  } else if (choice === openReview) {
+    await cfg.update('reveal.openConversation', true, vscode.ConfigurationTarget.Global);
+  } else if (choice === settings) {
+    await vscode.commands.executeCommand('workbench.action.openSettings', 'claudeSessionsViewer.reveal.openConversation');
+  }
+  await context.globalState.update(key, true);
+}
+
 function activate(context) {
   const provider = new SessionTreeProvider(context);
   const view = vscode.window.createTreeView('claudeSessions.tree', {
@@ -274,10 +371,23 @@ function activate(context) {
   // Always-available entry point: status-bar ✳ reveals the current session.
   const statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90);
   statusItem.text = '$(sparkle)';
-  statusItem.tooltip = 'Reveal current Claude session (tree + conversation)';
+  statusItem.tooltip = 'Reveal current Claude session in the tree';
   statusItem.command = 'claudeSessions.revealCurrent';
-  statusItem.show();
+  const updateRevealStatus = () => {
+    if (vscode.workspace.getConfiguration('claudeSessionsViewer').get('reveal.enabled', true)) statusItem.show();
+    else statusItem.hide();
+  };
+  updateRevealStatus();
   context.subscriptions.push(statusItem);
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('claudeSessionsViewer.reveal.enabled')) updateRevealStatus();
+      if (e.affectsConfiguration('claudeSessionsViewer.promptChildren.enabled')) provider.refresh();
+    })
+  );
+  setTimeout(() => {
+    maybeShowFirstRunReviewChoice(context).catch(() => {});
+  }, 1200);
 
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeSessions.refresh', () => provider.refresh()),
@@ -319,6 +429,10 @@ function activate(context) {
     vscode.commands.registerCommand('claudeSessions.rename', (node) => provider.rename(node)),
 
     vscode.commands.registerCommand('claudeSessions.revealCurrent', async () => {
+      if (!provider.config.revealEnabled) {
+        vscode.window.showInformationMessage('Claude Sessions: reveal is switched off in settings');
+        return;
+      }
       // "Current session" = the transcript being actively written (newest
       // mtime). Fresh index first so mtimes are current.
       provider.refresh();
@@ -328,23 +442,19 @@ function activate(context) {
         vscode.window.showInformationMessage('Claude Sessions: no sessions found');
         return;
       }
+      const activeTabTitle = vscode.window.tabGroups.activeTabGroup.activeTab
+        ? vscode.window.tabGroups.activeTabGroup.activeTab.label
+        : '';
+      const titleMatch = provider.findByActiveTabTitle(all, activeTabTitle);
       const now = Date.now();
       const recent = all
         .filter((n) => n.session.mtimeMs && now - n.session.mtimeMs < 5 * 60 * 1000)
         .sort((a, b) => b.session.mtimeMs - a.session.mtimeMs);
       let node;
-      if (recent.length === 1) node = recent[0];
-      else if (recent.length > 1) {
-        const pick = await vscode.window.showQuickPick(
-          recent.map((n) => ({
-            label: `$(circle-filled) ${provider.displayTitle(n.session)}`,
-            description: `${n.group.label} · ${n.session.id.slice(0, 8)} · active ${relativeAge(new Date(n.session.mtimeMs).toISOString())} ago`,
-            n,
-          })),
-          { placeHolder: 'Several sessions are active — which one?' }
-        );
-        if (!pick) return;
-        node = pick.n;
+      if (titleMatch) {
+        node = titleMatch;
+      } else if (recent.length) {
+        node = recent[0];
       } else {
         node = all.sort((a, b) => (b.session.mtimeMs || 0) - (a.session.mtimeMs || 0))[0];
         vscode.window.showInformationMessage(
@@ -353,11 +463,13 @@ function activate(context) {
       }
       try {
         await vscode.commands.executeCommand('workbench.view.extension.claudeSessions');
-        await view.reveal(node, { select: true, expand: true, focus: false });
+        await view.reveal(node, { select: true, expand: false, focus: false });
       } catch {}
-      await viewer.open(node.session, provider.displayTitle(node.session), node.group.label, {
-        beside: true,
-      });
+      if (provider.config.revealOpenConversation) {
+        await viewer.open(node.session, provider.displayTitle(node.session), node.group.label, {
+          beside: true,
+        });
+      }
     }),
 
     vscode.commands.registerCommand('claudeSessions.openConversation', async (node) => {
@@ -377,13 +489,12 @@ function activate(context) {
         node: n,
       }));
       const pick = await vscode.window.showQuickPick(items, {
-        placeHolder: 'Search sessions by title, prompt, folder, or id — Enter resumes',
+        placeHolder: 'Search sessions by title, prompt, folder, or id — Enter opens review',
         matchOnDescription: true,
         matchOnDetail: true,
       });
       if (pick) {
-        const s = pick.node.session;
-        openClaudeTerminal(s.cwd, `claude · ${pick.node.group.label}`, `claude --resume ${s.id}`);
+        await viewer.open(pick.node.session, provider.displayTitle(pick.node.session), pick.node.group.label);
       }
     }),
 

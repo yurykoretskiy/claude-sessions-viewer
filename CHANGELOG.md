@@ -6,6 +6,80 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.4.5] — 2026-07-06
+
+### Fixed
+- Packaged README screenshots, changelog, and license into the `.vsix` so the
+  installed extension documentation matches the GitHub README.
+
+### Changed
+- README now describes the current review-first behavior only: tree reveal,
+  optional review pane, review-opening search, and explicit resume inside the
+  review pane.
+
+## [1.4.4] — 2026-07-06
+
+### Added
+- First-run prompt explains reveal/review behavior and lets the user choose
+  "Open Review Pane", "Tree Only", or Settings. The choice is stored in VS
+  Code global settings.
+- The tree now shows an immediate "Indexing Claude sessions..." row during
+  cold first-run indexing instead of appearing blank.
+
+### Changed
+- `claudeSessionsViewer.reveal.openConversation` defaults to on for new users
+  so reveal demonstrates the read-only review pane. Constant users can switch
+  it off for tree-only reveal.
+- Tree search opens the read-only review pane instead of resuming the session.
+  Resume remains inside the viewer.
+- Grouping UI now says "working folders" and "Claude raw storage" instead of
+  "smart" and "raw", with a short status message when toggled.
+
+## [1.4.3] — 2026-07-06
+
+### Fixed
+- Reveal now matches the active Claude tab against session title, first prompt,
+  and last prompt, including truncated tab titles, instead of falling back too
+  easily to the first active transcript.
+
+### Changed
+- Reveal is tree-first by default. It selects the session row in the tree and
+  no longer opens the full conversation unless
+  `claudeSessionsViewer.reveal.openConversation` is switched on.
+- The activity/status reveal tooltip now describes the tree-pointing behavior.
+
+## [1.4.2] — 2026-07-06
+
+### Fixed
+- Reveal no longer stops on the "several sessions are active" picker. It now
+  prefers the active Claude tab title and otherwise reveals the newest active
+  transcript.
+
+### Changed
+- Session rows in the tree are review-only: the resume/play action was removed
+  from tree inline/context menus and remains inside the conversation viewer.
+- Project folders default collapsed so first load does not render every
+  session row across every project at once.
+- The conversation viewer resume button now uses the Claude accent treatment
+  to make the one run/resume surface visually clear.
+
+## [1.4.1] — 2026-07-06
+
+### Fixed
+- Reveal now selects the session row in the tree instead of passing a wrapper
+  object that VS Code cannot reliably reveal.
+
+### Changed
+- Tree browsing is session-level by default: prompt/message child rows are
+  hidden unless `claudeSessionsViewer.promptChildren.enabled` is switched on.
+- Session-level indexing skips storing prompt child rows when prompt children
+  are off, reducing first-load/cache work.
+- Live conversation refresh is now optional and off by default via
+  `claudeSessionsViewer.liveRefresh.enabled`.
+- Reveal controls can be switched off with
+  `claudeSessionsViewer.reveal.enabled`; reveal can also be configured to
+  select the tree row without opening the viewer.
+
 ## [1.4.0] — 2026-07-06
 
 ### Added

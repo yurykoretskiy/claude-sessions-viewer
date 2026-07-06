@@ -9,9 +9,10 @@ NAME=$(node -p "require('./package.json').name")
 OUT="${NAME}-${VERSION}.vsix"
 STAGE=$(mktemp -d)
 
-mkdir -p "$STAGE/extension/assets"
-cp package.json *.js README.md "$STAGE/extension/"
+mkdir -p "$STAGE/extension/assets/screenshots"
+cp package.json *.js README.md CHANGELOG.md LICENSE "$STAGE/extension/"
 cp assets/*.svg "$STAGE/extension/assets/"
+cp assets/screenshots/*.png "$STAGE/extension/assets/screenshots/"
 
 cat > "$STAGE/extension.vsixmanifest" <<EOF
 <?xml version="1.0" encoding="utf-8"?>
@@ -40,6 +41,7 @@ cat > "$STAGE/[Content_Types].xml" <<'EOF'
   <Default Extension="js" ContentType="application/javascript"/>
   <Default Extension="md" ContentType="text/markdown"/>
   <Default Extension="svg" ContentType="image/svg+xml"/>
+  <Default Extension="png" ContentType="image/png"/>
 </Types>
 EOF
 

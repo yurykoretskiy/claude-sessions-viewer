@@ -14,27 +14,32 @@ into a browsable map.
 
 - **Sessions by folder** — activity-bar tree of all local sessions: title,
   id, age. Folders sorted by recent activity.
-- **Smart attribution** — sessions started at the workspace root are
+- **Working-folder grouping** — sessions started at the workspace root can be
   re-filed under the folder they actually worked in (marked `≈`), by
-  analyzing which paths the session touched. Toggle to Claude's raw index
+  analyzing which paths the session touched. Toggle to Claude's raw storage
   anytime.
 - **Conversation viewer** — click a session and read it like a chat: your
   messages right, Claude's left, tool noise hidden (optional markers),
-  opens at the last message. Read-only — nothing runs on click.
+  opens at the last message. Read-only until you press the accent resume
+  button in the viewer.
 - **Filters & modes** — All / you / Claude; chat bubbles or plain
   copy-clean flow; names on/off for sharing; one-click copy of the entire
   conversation; export to Markdown (drop straight into an Obsidian vault).
 - **Launchers** — right-click any folder in the Explorer: *New session
   here* (terminal) or *New window session here* (official Claude Code
-  panel). Resume any session in a terminal at its original directory.
+  panel). Resume stays explicit inside the review pane.
 - **Reveal current session** — a ✳ button on the Claude Code panel tab (and
   in the status bar) locates the session you're working in right now:
-  highlights it in the tree and opens its conversation beside you, updating
-  live as the session continues.
-- **Search** — fuzzy match across titles, prompts, folders, ids.
+  highlights it in the tree. New users can also open the conversation review
+  pane automatically; constant users can switch that off.
+- **Search** — fuzzy match across titles, prompts, folders, ids; opens the
+  read-only review pane.
 - **Rename** — give untitled sessions a custom name (stored locally).
+- **Session-level first** — the tree defaults to collapsed folders and
+  folder → session browsing. Prompt rows under sessions can be switched on in
+  settings when needed.
 
-**Reveal the session you're in right now** — ✳ on the panel tab → highlighted in the tree, conversation opens beside, updating live:
+**Reveal the session you're in right now** — ✳ on the panel tab → highlighted in the tree:
 
 ![Reveal current session](assets/screenshots/reveal-current.png)
 
@@ -47,7 +52,7 @@ into a browsable map.
 Grab the `.vsix` from [Releases](https://github.com/yurykoretskiy/claude-sessions-viewer/releases), then:
 
 ```bash
-code --install-extension claude-sessions-viewer-1.3.0.vsix
+code --install-extension claude-sessions-viewer-1.4.5.vsix
 ```
 
 Reload the window. A ✳ icon appears in the activity bar.
@@ -66,7 +71,21 @@ Claude Code sessions — nothing to configure). Indexing streams each
 transcript once and caches results, so the first load takes a few seconds
 per few hundred sessions and is instant afterwards; only changed files are
 re-read. The tree refreshes itself when sessions change, or hit ⟳.
-Conversations are parsed lazily — only when you open one.
+Conversations are parsed lazily — only when you open one. On a cold first
+run, the tree shows an indexing row immediately instead of staying blank.
+Prompt/message preview rows under sessions are off by default for faster
+session-level browsing.
+
+## Settings
+
+- `claudeSessionsViewer.reveal.enabled` — show/enable reveal controls.
+- `claudeSessionsViewer.reveal.openConversation` — reveal also opens the
+  read-only conversation viewer. On by default for new users; switch it off
+  for tree-only reveal.
+- `claudeSessionsViewer.liveRefresh.enabled` — keep an opened viewer updated
+  while the transcript changes. Off by default.
+- `claudeSessionsViewer.promptChildren.enabled` — show prompt/message rows
+  under sessions. Off by default.
 
 ## Privacy & how it works
 

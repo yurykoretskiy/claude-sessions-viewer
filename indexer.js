@@ -11,7 +11,7 @@ const readline = require('readline');
 const PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects');
 
 // Bump when the extracted shape changes so stale cache entries re-index.
-const INDEX_VERSION = 2;
+const INDEX_VERSION = 3;
 
 const RE_TIMESTAMP = /"timestamp":"([^"]+)"/;
 const RE_CWD = /"cwd":"([^"]+)"/;
@@ -22,7 +22,8 @@ function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-async function indexSessionFile(filePath) {
+async function indexSessionFile(filePath, options = {}) {
+  const includePrompts = options.includePrompts !== false;
   const id = path.basename(filePath, '.jsonl');
   const result = {
     id,
@@ -88,7 +89,7 @@ async function indexSessionFile(filePath) {
           }
           if (text && !text.startsWith('<')) {
             const clean = text.replace(/\s+/g, ' ').trim().slice(0, PROMPT_CHARS);
-            if (clean && result.prompts.length < MAX_PROMPTS) result.prompts.push(clean);
+            if (includePrompts && clean && result.prompts.length < MAX_PROMPTS) result.prompts.push(clean);
             if (!result.firstPrompt) result.firstPrompt = clean.slice(0, 120);
           }
         }
@@ -141,7 +142,9 @@ function listSessionFiles() {
 }
 
 // Returns array of session metadata objects; onProgress(done, total) optional.
-async function indexAll(cacheFile, onProgress) {
+async function indexAll(cacheFile, onProgress, options = {}) {
+  const includePrompts = options.includePrompts !== false;
+  const cacheVersion = `${INDEX_VERSION}:${includePrompts ? 'prompts' : 'session'}`;
   const cache = loadCache(cacheFile);
   const files = listSessionFiles();
   const sessions = [];
@@ -158,15 +161,15 @@ async function indexAll(cacheFile, onProgress) {
       continue;
     }
     const cached = cache[file];
-    if (cached && cached.v === INDEX_VERSION && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+    if (cached && cached.v === cacheVersion && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
       cached.data.size = cached.size;
       sessions.push(cached.data);
     } else {
       try {
-        const data = await indexSessionFile(file);
+        const data = await indexSessionFile(file, { includePrompts });
         data.mtimeMs = stat.mtimeMs;
         data.size = stat.size;
-        cache[file] = { v: INDEX_VERSION, mtimeMs: stat.mtimeMs, size: stat.size, data };
+        cache[file] = { v: cacheVersion, mtimeMs: stat.mtimeMs, size: stat.size, data };
         sessions.push(data);
         dirty = true;
       } catch {}
