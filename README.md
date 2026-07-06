@@ -24,8 +24,8 @@ project folder, one click away.
 ./build-vsix.sh --install   # requires the `code` CLI; then reload the window
 ```
 
-Or install a prebuilt `claude-sessions-<version>.vsix`:
-`code --install-extension claude-sessions-<version>.vsix`
+Or install a prebuilt `claude-sessions-viewer-<version>.vsix`:
+`code --install-extension claude-sessions-viewer-<version>.vsix`
 
 ## Requirements
 

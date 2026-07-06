@@ -4,7 +4,7 @@ Instructions for AI agents (Claude Code, Codex, etc.) operating on this repo.
 
 ## What this is
 
-Local VS Code extension `yury.claude-sessions`. Renders all Claude Code
+Local VS Code extension `yury.claude-sessions-viewer`. Renders all Claude Code
 sessions from `~/.claude/projects/*/*.jsonl` as a tree grouped by project
 folder, with launch/resume/search/rename commands. No build toolchain, no
 dependencies, plain JavaScript — do not introduce TypeScript, bundlers, or

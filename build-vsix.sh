@@ -5,7 +5,8 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 VERSION=$(node -p "require('./package.json').version")
-OUT="claude-sessions-${VERSION}.vsix"
+NAME=$(node -p "require('./package.json').name")
+OUT="${NAME}-${VERSION}.vsix"
 STAGE=$(mktemp -d)
 
 mkdir -p "$STAGE/extension/assets"
@@ -16,8 +17,8 @@ cat > "$STAGE/extension.vsixmanifest" <<EOF
 <?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011">
   <Metadata>
-    <Identity Language="en-US" Id="claude-sessions" Version="${VERSION}" Publisher="yury"/>
-    <DisplayName>Claude Sessions</DisplayName>
+    <Identity Language="en-US" Id="${NAME}" Version="${VERSION}" Publisher="yury"/>
+    <DisplayName>Claude Sessions Viewer</DisplayName>
     <Description xml:space="preserve">Browse Claude Code sessions grouped by project folder.</Description>
     <Categories>Other</Categories>
   </Metadata>
