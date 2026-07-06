@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>POC — Conversation Viewer (exact render)</title>
+<style>
+  /* ── VS Code theme simulation (the real webview uses --vscode-* vars) ── */
+  body[data-theme="dark"] {
+    --bg:#1e1e1e; --panel:#252526; --line:#3c3c3c; --fg:#cccccc; --mut:#8a8a8a;
+    --user-bub:#3a2620; --user-line:#d97757; --ai-bub:#2a2d2e; --chip:#333;
+    --btn:#0e639c; --btn-fg:#fff; --btn2:#3a3d41; --accent:#d97757; --sep:#5a5a5a;
+  }
+  body[data-theme="light"] {
+    --bg:#ffffff; --panel:#f3f3f3; --line:#e0e0e0; --fg:#333333; --mut:#767676;
+    --user-bub:#fbeee8; --user-line:#d97757; --ai-bub:#f4f4f4; --chip:#ececec;
+    --btn:#007acc; --btn-fg:#fff; --btn2:#e4e4e4; --accent:#c15f3c; --sep:#bbb;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#0b0b0b; font:13px/1.55 -apple-system,"SF Pro Text","Segoe UI",sans-serif;
+         display:flex; flex-direction:column; align-items:center; padding:20px; gap:14px; }
+
+  /* demo controls (not part of the extension) */
+  .demo-bar { display:flex; gap:8px; align-items:center; color:#999; font-size:12px; flex-wrap:wrap; }
+  .demo-bar b { color:#ddd; }
+  .demo-bar button { background:#2b2b2b; color:#ddd; border:1px solid #444; border-radius:12px;
+                     padding:3px 12px; cursor:pointer; font-size:12px; }
+  .demo-bar button.on { background:#d97757; color:#fff; border-color:#d97757; }
+
+  /* ── the viewer, exactly as the webview will render ── */
+  .vscode-frame { width:min(860px,96vw); border-radius:8px; overflow:hidden;
+                  box-shadow:0 12px 40px rgba(0,0,0,.5); }
+  .vstab { background:var(--panel); color:var(--mut); font-size:12px; padding:7px 14px;
+           border-bottom:1px solid var(--line); display:flex; gap:8px; align-items:center; }
+  .vstab .dot { color:var(--accent); }
+  .viewer { background:var(--bg); color:var(--fg); height:72vh; display:flex; flex-direction:column; }
+
+  .vhead { padding:12px 18px 10px; border-bottom:1px solid var(--line); background:var(--panel); }
+  .vhead .title { font-size:15px; font-weight:600; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .vhead .spark { color:var(--accent); }
+  .vhead .folder { font-size:11px; background:var(--chip); border-radius:9px; padding:1px 9px; color:var(--mut); }
+  .vhead .meta { color:var(--mut); font-size:11.5px; margin-top:3px; }
+  .vhead .actions { display:flex; gap:8px; margin-top:9px; }
+  .vhead button { border:none; border-radius:4px; padding:4px 12px; font-size:12px; cursor:pointer;
+                  background:var(--btn2); color:var(--fg); }
+  .vhead button.primary { background:var(--btn); color:var(--btn-fg); }
+  .vhead button.primary::before { content:"▶ "; }
+
+  .chat { flex:1; overflow-y:auto; padding:16px 18px; display:flex; flex-direction:column; gap:10px; }
+  .loadmore { align-self:center; background:var(--chip); color:var(--mut); border:1px dashed var(--sep);
+              border-radius:14px; padding:4px 14px; font-size:12px; cursor:pointer; }
+  .day { align-self:center; color:var(--mut); font-size:11px; letter-spacing:.06em;
+         border-bottom:1px solid var(--line); padding:0 10px 2px; }
+  .msg { max-width:76%; padding:8px 12px; border-radius:10px; white-space:pre-wrap; }
+  .msg .who { font-size:10.5px; color:var(--mut); margin-bottom:2px; letter-spacing:.04em; }
+  .msg.user { align-self:flex-end; background:var(--user-bub); border-right:3px solid var(--user-line);
+              border-bottom-right-radius:3px; }
+  .msg.ai { align-self:flex-start; background:var(--ai-bub); border-bottom-left-radius:3px; }
+  .msg.ai .who::before { content:"✳ "; color:var(--accent); }
+  .msg .more { color:var(--accent); font-size:11.5px; cursor:pointer; margin-top:4px; display:inline-block; }
+  .tool { align-self:center; font:11px ui-monospace,Menlo,monospace; color:var(--mut);
+          background:var(--chip); border-radius:10px; padding:1px 10px; }
+  .empty { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+           color:var(--mut); gap:6px; }
+  .empty .spark { font-size:28px; color:var(--accent); opacity:.6; }
+  code { background:var(--chip); border-radius:3px; padding:0 4px; font-size:12px; }
+</style>
+</head>
+<body data-theme="dark">
+
+<div class="demo-bar">
+  <b>Render conditions:</b>
+  <button class="on" data-state="normal">Normal session</button>
+  <button data-state="huge">Huge session (paged)</button>
+  <button data-state="untitled">Untitled session</button>
+  <button data-state="empty">Empty session</button>
+  <span style="opacity:.4">|</span>
+  <b>Theme:</b>
+  <button data-theme-btn="dark" class="on">Dark</button>
+  <button data-theme-btn="light">Light</button>
+</div>
+
+<div class="vscode-frame">
+  <div class="vstab"><span class="dot">✳</span><span id="tabname">Conversation — Add Claude session launcher…</span></div>
+  <div class="viewer">
+    <div class="vhead" id="vhead"></div>
+    <div class="chat" id="chat"></div>
+  </div>
+</div>
+
+<script>
+const STATES = {
+  normal: {
+    tab: "Conversation — Add Claude session launcher…",
+    head: { title:"Add Claude session launcher to VS Code folder context menu",
+            folder:"claude-sessions-viewer", id:"2e0cc0a3", meta:"05–06 Jul 2026 · 38 messages · started in ~/yury-vibe-coding" },
+    items: [
+      {t:"day", v:"05 JUL 2026"},
+      {t:"user", v:"can u modify VS Code that when I click on a specific folder I can run a claude session attached to this folder? now I need to open a new window every time and choose the folder"},
+      {t:"ai", v:"Good news: this is doable without opening new windows. Two realistic ways to get \"right-click folder → Claude session in that folder\" inside your current window — both launch a terminal-based claude session cwd'd to the folder."},
+      {t:"tool", v:"[tool: AskUserQuestion]"},
+      {t:"user", v:"I need something similar to what I have on Codex. On the left I have all my projects that I work on. Inside them I have all my sessions and I can go over sessions easily."},
+      {t:"tool", v:"[tool: Bash] [tool: Write] ×6"},
+      {t:"ai", v:"Data model confirmed: each session .jsonl carries an aiTitle, per-message cwd (ground truth for where it started), timestamps, and tool-call file paths I can use to attribute misfiled root sessions to the folder they actually worked in.", more:true},
+      {t:"day", v:"06 JUL 2026"},
+      {t:"user", v:"Ok, I want you to finish this, commit, and I want you to graduate this project…"},
+      {t:"ai", v:"Everything is done. Reload the window once to get v1.1.1. Duplicates — real bug, fixed: when you resume a session from a different folder, Claude copies the transcript into that folder's project dir."}
+    ]
+  },
+  huge: {
+    tab: "Conversation — Review Reddit dataset…",
+    head: { title:"Review Reddit dataset files for parsing benchmark",
+            folder:"reddit-parse-benchmark", id:"ad6c06bf", meta:"12 Jun – 03 Jul 2026 · 1,412 messages (30 MB) · showing latest 200" },
+    items: [
+      {t:"page", v:"↑ load 200 earlier messages (1,212 above)"},
+      {t:"day", v:"03 JUL 2026"},
+      {t:"user", v:"run the benchmark again with the new parser and compare against v2 results"},
+      {t:"tool", v:"[tool: Bash] ×14 · [tool: Read] ×3"},
+      {t:"ai", v:"Benchmark complete. The v3 parser processes 1,066 threads in 42 s (v2: 61 s) with identical output on 1,064 threads; the 2 diffs are malformed unicode in source data, not parser regressions.", more:true},
+      {t:"user", v:"good, store it as a finding"},
+      {t:"tool", v:"[tool: Bash]"},
+      {t:"ai", v:"Stored as FINDING-014 linked to INPUT-003. Benchmark data saved to data/parser-v3-benchmark-03-07-2026.json."}
+    ]
+  },
+  untitled: {
+    tab: "Conversation — 869cc5b6",
+    head: { title:"Untitled session 869cc5b6", folder:"~/yury-vibe-coding (root)", id:"869cc5b6",
+            meta:"20 Jun 2026 · 3 messages · no AI title — first prompt shown as name" },
+    items: [
+      {t:"day", v:"20 JUN 2026"},
+      {t:"user", v:"hi"},
+      {t:"ai", v:"Hi! I'm ready to help. What are we working on today?"},
+      {t:"user", v:"nothing, just checking the new setup works"}
+    ]
+  },
+  empty: { tab:"Conversation — b194dd8c", head:{ title:"Session b194dd8c", folder:"~/yury-vibe-coding (root)",
+           id:"b194dd8c", meta:"19 Jun 2026 · 0 readable messages" }, items:[], empty:true }
+};
+
+function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+
+function render(key){
+  const st = STATES[key];
+  document.getElementById("tabname").textContent = st.tab;
+  document.getElementById("vhead").innerHTML =
+    `<div class="title"><span class="spark">✳</span>${esc(st.head.title)}` +
+    `<span class="folder">📁 ${esc(st.head.folder)}</span></div>` +
+    `<div class="meta">session <code>${st.head.id}</code> · ${esc(st.head.meta)}</div>` +
+    `<div class="actions"><button class="primary">Resume in terminal</button>` +
+    `<button>⬇ Export Markdown</button><button>{ } Raw .jsonl</button></div>`;
+  const chat = document.getElementById("chat");
+  chat.innerHTML = "";
+  if (st.empty) {
+    chat.innerHTML = `<div class="empty"><div class="spark">✳</div>` +
+      `<div>No readable conversation in this transcript</div>` +
+      `<div style="font-size:11.5px">(only tool traffic / system records — open Raw .jsonl to inspect)</div></div>`;
+    return;
+  }
+  for (const it of st.items) {
+    if (it.t === "day") chat.insertAdjacentHTML("beforeend", `<div class="day">${it.v}</div>`);
+    else if (it.t === "tool") chat.insertAdjacentHTML("beforeend", `<div class="tool">${esc(it.v)}</div>`);
+    else if (it.t === "page") chat.insertAdjacentHTML("beforeend", `<div class="loadmore">${esc(it.v)}</div>`);
+    else {
+      const who = it.t === "user" ? "YURY" : "CLAUDE";
+      const more = it.more ? `<span class="more">show full message ▾</span>` : "";
+      chat.insertAdjacentHTML("beforeend",
+        `<div class="msg ${it.t}"><div class="who">${who}</div>${esc(it.v)}${more}</div>`);
+    }
+  }
+  chat.scrollTop = chat.scrollHeight;
+}
+
+document.querySelectorAll("[data-state]").forEach(b => b.onclick = () => {
+  document.querySelectorAll("[data-state]").forEach(x => x.classList.remove("on"));
+  b.classList.add("on"); render(b.dataset.state);
+});
+document.querySelectorAll("[data-theme-btn]").forEach(b => b.onclick = () => {
+  document.querySelectorAll("[data-theme-btn]").forEach(x => x.classList.remove("on"));
+  b.classList.add("on"); document.body.dataset.theme = b.dataset.themeBtn;
+});
+render("normal");
+</script>
+</body>
+</html>
