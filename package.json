@@ -2,7 +2,7 @@
   "name": "claude-sessions-viewer",
   "displayName": "Claude Sessions Viewer",
   "description": "Browse Claude Code sessions grouped by project folder; right-click any folder to start a Claude session there.",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "publisher": "yury",
   "license": "MIT",
   "engines": {
@@ -34,6 +34,11 @@
       ]
     },
     "commands": [
+      {
+        "command": "claudeSessions.revealCurrent",
+        "title": "Claude Sessions: Reveal current session",
+        "icon": "$(sparkle)"
+      },
       {
         "command": "claudeSessions.newHere",
         "title": "Claude: New session here",
@@ -159,6 +164,13 @@
         {
           "command": "claudeSessions.copySessionId",
           "when": "view == claudeSessions.tree && viewItem == session"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "claudeSessions.revealCurrent",
+          "when": "activeWebviewPanelId == 'claudeVSCodePanel'",
+          "group": "navigation@1"
         }
       ]
     },

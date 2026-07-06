@@ -27,6 +27,10 @@ into a browsable map.
 - **Launchers** — right-click any folder in the Explorer: *New session
   here* (terminal) or *New window session here* (official Claude Code
   panel). Resume any session in a terminal at its original directory.
+- **Reveal current session** — a ✳ button on the Claude Code panel tab (and
+  in the status bar) locates the session you're working in right now:
+  highlights it in the tree and opens its conversation beside you, updating
+  live as the session continues.
 - **Search** — fuzzy match across titles, prompts, folders, ids.
 - **Rename** — give untitled sessions a custom name (stored locally).
 

@@ -35,22 +35,46 @@ class ConversationViewer {
     return { theme: c.get('theme', 'system'), userLabel: c.get('userLabel', 'USER') };
   }
 
-  async open(session, title, folderLabel) {
+  async open(session, title, folderLabel, opts = {}) {
     const existing = this.panels.get(session.id);
     if (existing) {
-      existing.panel.reveal();
+      existing.panel.reveal(opts.beside ? vscode.ViewColumn.Beside : undefined);
       return;
     }
     const convo = await extractConversation(session.file);
     const panel = vscode.window.createWebviewPanel(
       'claudeSessionsViewer.conversation',
       `✳ ${title}`,
-      vscode.ViewColumn.One,
+      opts.beside ? vscode.ViewColumn.Beside : vscode.ViewColumn.One,
       { enableScripts: true, retainContextWhenHidden: true }
     );
     const entry = { panel, convo, session, title, folder: folderLabel };
     this.panels.set(session.id, entry);
-    panel.onDidDispose(() => this.panels.delete(session.id));
+
+    // Live refresh: while the session keeps writing, re-extract (cheap,
+    // ≤200ms even for 50MB) and push updated messages into the webview.
+    const fsMod = require('fs');
+    let refreshing = false;
+    const listener = async () => {
+      if (refreshing) return;
+      refreshing = true;
+      try {
+        entry.convo = await extractConversation(session.file);
+        panel.webview.postMessage({
+          type: 'update',
+          messages: entry.convo.messages,
+          firstTs: entry.convo.firstTs,
+          lastTs: entry.convo.lastTs,
+        });
+      } catch {}
+      refreshing = false;
+    };
+    fsMod.watchFile(session.file, { interval: 3000 }, listener);
+
+    panel.onDidDispose(() => {
+      fsMod.unwatchFile(session.file, listener);
+      this.panels.delete(session.id);
+    });
     panel.webview.onDidReceiveMessage((msg) => this.onMessage(entry, msg));
     panel.webview.html = this.html(entry);
   }
@@ -197,7 +221,7 @@ class ConversationViewer {
       <button class="ibtn" id="gear" title="Viewer settings">⚙</button>
       <button class="ibtn" id="fold" title="Session details">⌄</button>
     </div>
-    <div class="dates">created ${fmt(convo.firstTs)} → last message ${fmt(convo.lastTs)}</div>
+    <div class="dates" id="dates">created ${fmt(convo.firstTs)} → last message ${fmt(convo.lastTs)}</div>
     <div class="details" id="details">📁 ${esc(folder)} · session <code>${esc(session.id)}</code> · ${nMsgs} messages · transcript ${sizeKb} KB · started in <code>${esc(shortHome(session.cwd))}</code></div>
     <div class="gear-pop" id="gearpop">
       <div class="row"><span class="lbl">Theme</span>
@@ -236,7 +260,10 @@ document.querySelectorAll('[data-th]').forEach(b => {
 function dayOf(ts){ if(!ts) return null; const d = new Date(ts);
   return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}).toUpperCase(); }
 
-function render(){
+function render(keepScroll){
+  const chatEl = $('chat');
+  const wasAtBottom = chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < 60;
+  const prevScroll = chatEl.scrollTop;
   const label = ($('ulabel').value || 'USER').toUpperCase();
   $('chipUser').textContent = label + ' only';
   const chat = $('chat');
@@ -283,8 +310,22 @@ function render(){
     el.parentElement.innerHTML = '<div class="who">' +
       escHtml(el.parentElement.querySelector('.who').textContent) + '</div>' + escHtml(m.text);
   });
-  chat.scrollTop = chat.scrollHeight; // WhatsApp: open at last message
+  if (keepScroll && !wasAtBottom) chat.scrollTop = prevScroll;
+  else chat.scrollTop = chat.scrollHeight; // WhatsApp: open at last message
 }
+
+function fmtTs(ts){ if(!ts) return '?'; const d = new Date(ts);
+  return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) + ' ' +
+         d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}); }
+
+window.addEventListener('message', e => {
+  const m = e.data;
+  if (m.type === 'update') {
+    DATA.messages = m.messages;
+    $('dates').textContent = 'created ' + fmtTs(m.firstTs) + ' → last message ' + fmtTs(m.lastTs) + ' · live';
+    render(true);
+  }
+});
 
 const state = () => ({ filter, names: $('names').checked, tools: $('tools').checked });
 $('resume').onclick = () => vscodeApi.postMessage({ type:'resume' });

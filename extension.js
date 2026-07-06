@@ -169,6 +169,12 @@ class SessionTreeProvider {
     return this.groups.flatMap((g) => g.sessions.map((s) => ({ session: s, group: g })));
   }
 
+  getParent(element) {
+    if (element.kind === 'session') return { kind: 'folder', group: element.group };
+    if (element.kind === 'prompt' && element.parent) return element.parent;
+    return null;
+  }
+
   async getChildren(element) {
     await this.ensureLoaded();
     if (!element) {
@@ -178,7 +184,7 @@ class SessionTreeProvider {
       return element.group.sessions.map((s) => ({ kind: 'session', session: s, group: element.group }));
     }
     if (element.kind === 'session') {
-      return (element.session.prompts || []).map((p, i) => ({ kind: 'prompt', text: p, index: i }));
+      return (element.session.prompts || []).map((p, i) => ({ kind: 'prompt', text: p, index: i, parent: element }));
     }
     return [];
   }
@@ -220,7 +226,8 @@ class SessionTreeProvider {
         : vscode.TreeItemCollapsibleState.None
     );
     item.id = 's:' + s.id;
-    item.description = `${s.id.slice(0, 8)} · ${relativeAge(s.lastTs)}${s.byContent ? ' ≈' : ''}`;
+    const live = s.mtimeMs && Date.now() - s.mtimeMs < 5 * 60 * 1000 ? '● ' : '';
+    item.description = `${live}${s.id.slice(0, 8)} · ${relativeAge(s.lastTs)}${s.byContent ? ' ≈' : ''}`;
     item.iconPath = new vscode.ThemeIcon('comment-discussion');
     item.contextValue = 'session';
     item.tooltip = new vscode.MarkdownString(
@@ -264,6 +271,14 @@ function activate(context) {
   const viewer = new ConversationViewer(context);
   const panelFlagFile = path.join(context.globalStorageUri.fsPath, 'open-panel-flag.json');
 
+  // Always-available entry point: status-bar ✳ reveals the current session.
+  const statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90);
+  statusItem.text = '$(sparkle)';
+  statusItem.tooltip = 'Reveal current Claude session (tree + conversation)';
+  statusItem.command = 'claudeSessions.revealCurrent';
+  statusItem.show();
+  context.subscriptions.push(statusItem);
+
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeSessions.refresh', () => provider.refresh()),
 
@@ -302,6 +317,48 @@ function activate(context) {
     }),
 
     vscode.commands.registerCommand('claudeSessions.rename', (node) => provider.rename(node)),
+
+    vscode.commands.registerCommand('claudeSessions.revealCurrent', async () => {
+      // "Current session" = the transcript being actively written (newest
+      // mtime). Fresh index first so mtimes are current.
+      provider.refresh();
+      await provider.ensureLoaded();
+      const all = provider.allSessions();
+      if (!all.length) {
+        vscode.window.showInformationMessage('Claude Sessions: no sessions found');
+        return;
+      }
+      const now = Date.now();
+      const recent = all
+        .filter((n) => n.session.mtimeMs && now - n.session.mtimeMs < 5 * 60 * 1000)
+        .sort((a, b) => b.session.mtimeMs - a.session.mtimeMs);
+      let node;
+      if (recent.length === 1) node = recent[0];
+      else if (recent.length > 1) {
+        const pick = await vscode.window.showQuickPick(
+          recent.map((n) => ({
+            label: `$(circle-filled) ${provider.displayTitle(n.session)}`,
+            description: `${n.group.label} · ${n.session.id.slice(0, 8)} · active ${relativeAge(new Date(n.session.mtimeMs).toISOString())} ago`,
+            n,
+          })),
+          { placeHolder: 'Several sessions are active — which one?' }
+        );
+        if (!pick) return;
+        node = pick.n;
+      } else {
+        node = all.sort((a, b) => (b.session.mtimeMs || 0) - (a.session.mtimeMs || 0))[0];
+        vscode.window.showInformationMessage(
+          'Claude Sessions: no session active in the last 5 minutes — revealing the most recent one'
+        );
+      }
+      try {
+        await vscode.commands.executeCommand('workbench.view.extension.claudeSessions');
+        await view.reveal(node, { select: true, expand: true, focus: false });
+      } catch {}
+      await viewer.open(node.session, provider.displayTitle(node.session), node.group.label, {
+        beside: true,
+      });
+    }),
 
     vscode.commands.registerCommand('claudeSessions.openConversation', async (node) => {
       try {
