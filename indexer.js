@@ -159,11 +159,13 @@ async function indexAll(cacheFile, onProgress) {
     }
     const cached = cache[file];
     if (cached && cached.v === INDEX_VERSION && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+      cached.data.size = cached.size;
       sessions.push(cached.data);
     } else {
       try {
         const data = await indexSessionFile(file);
         data.mtimeMs = stat.mtimeMs;
+        data.size = stat.size;
         cache[file] = { v: INDEX_VERSION, mtimeMs: stat.mtimeMs, size: stat.size, data };
         sessions.push(data);
         dirty = true;

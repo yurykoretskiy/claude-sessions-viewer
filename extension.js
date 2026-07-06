@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { indexAll, PROJECTS_DIR } = require('./indexer');
+const { ConversationViewer } = require('./viewer');
 
 const MIN_MENTIONS = 3; // content-attribution threshold for root-started sessions
 const IGNORED_SEGMENTS = new Set(['node_modules', 'venv', '__pycache__', 'dist', 'build']);
@@ -188,7 +189,14 @@ class SessionTreeProvider {
       const item = new vscode.TreeItem(g.label, vscode.TreeItemCollapsibleState.Expanded);
       item.id = 'f:' + g.folderPath + ':' + g.label;
       item.description = `${g.sessions.length}`;
-      item.iconPath = new vscode.ThemeIcon(g.label === 'root (unassigned)' ? 'inbox' : 'folder');
+      const root = this.workspaceRoot;
+      const icon =
+        g.label === 'root (unassigned)'
+          ? 'folder-root.svg'
+          : root && !g.folderPath.startsWith(root)
+            ? 'folder-outside.svg'
+            : 'folder-spark.svg';
+      item.iconPath = vscode.Uri.joinPath(this.context.extensionUri, 'assets', icon);
       item.contextValue = 'folder';
       item.tooltip = g.folderPath;
       return item;
@@ -225,8 +233,13 @@ class SessionTreeProvider {
         s.lastPrompt ? `last prompt: ${s.lastPrompt.slice(0, 200)}` : '',
       ].join('\n')
     );
-    // No click command on purpose: clicking expands the session to preview
-    // its prompts. Resuming is explicit — the inline ▶ button or context menu.
+    // Click opens the read-only conversation viewer (POC v3 flow). Resuming
+    // stays explicit — the ▶ button in the viewer or the context menu here.
+    item.command = {
+      command: 'claudeSessions.openConversation',
+      title: 'Open as conversation',
+      arguments: [element],
+    };
     return item;
   }
 }
@@ -248,6 +261,7 @@ function activate(context) {
   provider.view = view;
   provider.updateModeUi();
 
+  const viewer = new ConversationViewer(context);
   const panelFlagFile = path.join(context.globalStorageUri.fsPath, 'open-panel-flag.json');
 
   context.subscriptions.push(
@@ -288,6 +302,14 @@ function activate(context) {
     }),
 
     vscode.commands.registerCommand('claudeSessions.rename', (node) => provider.rename(node)),
+
+    vscode.commands.registerCommand('claudeSessions.openConversation', async (node) => {
+      try {
+        await viewer.open(node.session, provider.displayTitle(node.session), node.group.label);
+      } catch (e) {
+        vscode.window.showErrorMessage(`Claude Sessions: could not open conversation — ${e.message}`);
+      }
+    }),
 
     vscode.commands.registerCommand('claudeSessions.search', async () => {
       await provider.ensureLoaded();
