@@ -10,8 +10,8 @@ OUT="${NAME}-${VERSION}.vsix"
 STAGE=$(mktemp -d)
 
 mkdir -p "$STAGE/extension/assets"
-cp package.json extension.js indexer.js README.md "$STAGE/extension/"
-cp assets/icon.svg "$STAGE/extension/assets/"
+cp package.json *.js README.md "$STAGE/extension/"
+cp assets/*.svg "$STAGE/extension/assets/"
 
 cat > "$STAGE/extension.vsixmanifest" <<EOF
 <?xml version="1.0" encoding="utf-8"?>
