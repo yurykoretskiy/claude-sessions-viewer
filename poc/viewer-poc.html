@@ -3,62 +3,79 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>POC v2 — Conversation Viewer (exact render)</title>
+<title>POC v3 — Sessions Explorer + Conversation Viewer</title>
 <style>
   body[data-theme="dark"] {
-    --bg:#1e1e1e; --panel:#252526; --line:#3c3c3c; --fg:#cccccc; --mut:#8a8a8a;
-    --user-bub:#3a2620; --user-line:#d97757; --ai-bub:#2a2d2e; --chip:#333;
-    --btn:#0e639c; --btn-fg:#fff; --btn2:#3a3d41; --accent:#d97757; --sep:#5a5a5a;
+    --bg:#1e1e1e; --panel:#252526; --side:#212223; --line:#3c3c3c; --fg:#cccccc; --mut:#8a8a8a;
+    --user-bub:#3a2620; --user-line:#d97757; --ai-bub:#2a2d2e; --chip:#333; --hov:#2a2d2e;
+    --btn2:#3a3d41; --accent:#d97757; --sep:#5a5a5a; --sel:#094771;
   }
   body[data-theme="light"] {
-    --bg:#ffffff; --panel:#f3f3f3; --line:#e0e0e0; --fg:#333333; --mut:#767676;
-    --user-bub:#fbeee8; --user-line:#d97757; --ai-bub:#f4f4f4; --chip:#ececec;
-    --btn:#007acc; --btn-fg:#fff; --btn2:#e4e4e4; --accent:#c15f3c; --sep:#bbb;
+    --bg:#ffffff; --panel:#f3f3f3; --side:#f7f7f7; --line:#e0e0e0; --fg:#333333; --mut:#767676;
+    --user-bub:#fbeee8; --user-line:#d97757; --ai-bub:#f4f4f4; --chip:#ececec; --hov:#ececec;
+    --btn2:#e4e4e4; --accent:#c15f3c; --sep:#bbb; --sel:#d6e9f8;
   }
   * { box-sizing:border-box; }
-  body { margin:0; background:#0b0b0b; font:13px/1.55 -apple-system,"SF Pro Text","Segoe UI",sans-serif;
-         display:flex; flex-direction:column; align-items:center; padding:20px; gap:14px; }
-
+  body { margin:0; background:#0b0b0b; font:13px/1.5 -apple-system,"SF Pro Text","Segoe UI",sans-serif;
+         display:flex; flex-direction:column; align-items:center; padding:18px; gap:12px; }
   .demo-bar { display:flex; gap:8px; align-items:center; color:#999; font-size:12px; flex-wrap:wrap; }
   .demo-bar b { color:#ddd; }
   .demo-bar button { background:#2b2b2b; color:#ddd; border:1px solid #444; border-radius:12px;
                      padding:3px 12px; cursor:pointer; font-size:12px; }
   .demo-bar button.on { background:#d97757; color:#fff; border-color:#d97757; }
 
-  .vscode-frame { width:min(860px,96vw); border-radius:8px; overflow:hidden;
-                  box-shadow:0 12px 40px rgba(0,0,0,.5); }
-  .vstab { background:var(--panel); color:var(--mut); font-size:12px; padding:7px 14px;
-           border-bottom:1px solid var(--line); display:flex; gap:8px; align-items:center; }
-  .vstab .dot { color:var(--accent); }
-  .viewer { background:var(--bg); color:var(--fg); height:74vh; display:flex; flex-direction:column; position:relative; }
+  .vscode-frame { width:min(1150px,97vw); border-radius:8px; overflow:hidden;
+                  box-shadow:0 12px 40px rgba(0,0,0,.5); display:flex; height:76vh; }
 
-  /* ── compact header: one slim row ── */
+  /* ═══ STEP 1: sidebar — Sessions Explorer (webview-styled) ═══ */
+  .sidebar { width:290px; flex-shrink:0; background:var(--side); border-right:1px solid var(--line);
+             display:flex; flex-direction:column; color:var(--fg); }
+  .shead { padding:8px 10px 6px; font-size:11px; letter-spacing:.07em; color:var(--mut);
+           display:flex; align-items:center; gap:6px; }
+  .shead .grow { flex:1; }
+  .shead .mini { cursor:pointer; padding:1px 4px; border-radius:3px; }
+  .shead .mini:hover { background:var(--hov); color:var(--fg); }
+  .ssearch { margin:0 10px 8px; background:var(--bg); border:1px solid var(--line); border-radius:5px;
+             color:var(--mut); font-size:12px; padding:4px 9px; }
+  .slist { flex:1; overflow-y:auto; padding:0 6px 10px; }
+  .sfolder { display:flex; align-items:center; gap:6px; padding:4px 6px; border-radius:5px;
+             cursor:pointer; font-weight:600; font-size:12.5px; margin-top:6px; }
+  .sfolder:hover { background:var(--hov); }
+  .sfolder .n { color:var(--mut); font-weight:400; font-size:11px; margin-left:auto; }
+  .sfolder .ic { color:var(--accent); }
+  .ssess { display:flex; align-items:baseline; gap:6px; padding:3px 6px 3px 24px; border-radius:5px;
+           cursor:pointer; font-size:12.5px; color:var(--fg); }
+  .ssess:hover { background:var(--hov); }
+  .ssess.sel { background:var(--sel); }
+  .ssess .t { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ssess .meta { margin-left:auto; color:var(--mut); font-size:10.5px; font-family:ui-monospace,Menlo,monospace;
+                 flex-shrink:0; }
+  .ssess .apx { color:var(--accent); }
+
+  /* ═══ STEP 2: viewer ═══ */
+  .viewer { flex:1; background:var(--bg); color:var(--fg); display:flex; flex-direction:column; position:relative; }
   .vhead { padding:7px 12px; border-bottom:1px solid var(--line); background:var(--panel); }
   .vrow { display:flex; align-items:center; gap:8px; }
   .vrow .spark { color:var(--accent); }
   .vrow .title { font-size:13px; font-weight:600; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .ibtn { border:none; background:transparent; color:var(--mut); font-size:14px; cursor:pointer;
-          padding:2px 6px; border-radius:4px; }
+          padding:2px 6px; border-radius:4px; position:relative; }
   .ibtn:hover { background:var(--btn2); color:var(--fg); }
   .ibtn.play { color:var(--accent); }
-  .details { display:none; color:var(--mut); font-size:11.5px; margin-top:5px; }
+  .dates { color:var(--mut); font-size:11px; margin-top:3px; }
+  .details { display:none; color:var(--mut); font-size:11.5px; margin-top:4px; }
   .details.open { display:block; }
   .details code { background:var(--chip); border-radius:3px; padding:0 4px; font-size:11px; }
 
-  /* ── filter bar ── */
   .fbar { display:flex; gap:6px; align-items:center; padding:5px 12px; border-bottom:1px solid var(--line);
-          background:var(--bg); font-size:11.5px; }
+          font-size:11.5px; flex-wrap:wrap; }
   .fchip { border:1px solid var(--line); background:transparent; color:var(--mut); border-radius:11px;
            padding:1px 11px; cursor:pointer; font-size:11.5px; }
   .fchip.on { background:var(--chip); color:var(--fg); border-color:var(--sep); }
-  .fchip.user.on { border-color:var(--user-line); color:var(--accent); }
-  .fbar .right { margin-left:auto; display:flex; gap:10px; align-items:center; color:var(--mut); }
+  .fbar .right { margin-left:auto; display:flex; gap:12px; align-items:center; color:var(--mut); }
   .fbar label { cursor:pointer; user-select:none; }
 
   .chat { flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:9px; }
-  .banner { align-self:stretch; text-align:center; background:var(--chip); color:var(--mut);
-            border-radius:6px; padding:5px 10px; font-size:11.5px; }
-  .banner b { color:var(--fg); cursor:pointer; text-decoration:underline; }
   .day { align-self:center; color:var(--mut); font-size:11px; letter-spacing:.06em;
          border-bottom:1px solid var(--line); padding:0 10px 2px; }
   .msg { max-width:76%; padding:7px 11px; border-radius:10px; white-space:pre-wrap; }
@@ -66,163 +83,195 @@
   .msg.user { align-self:flex-end; background:var(--user-bub); border-right:3px solid var(--user-line);
               border-bottom-right-radius:3px; }
   .msg.ai { align-self:flex-start; background:var(--ai-bub); border-bottom-left-radius:3px; }
-  .msg.ai .who::before { content:"✳ "; color:var(--accent); }
-  .msg .more { color:var(--accent); font-size:11.5px; cursor:pointer; margin-top:4px; display:inline-block; }
+  body[data-names="on"] .msg.ai .who::before { content:"✳ "; color:var(--accent); }
+  body[data-names="off"] .who { display:none; }
+  /* plain (flow) mode — copy-paste clean */
+  body[data-mode="plain"] .msg { max-width:100%; align-self:stretch; background:transparent; border:none;
+                                 border-left:2px solid var(--line); border-radius:0; padding:2px 12px; }
+  body[data-mode="plain"] .msg.user { border-left-color:var(--user-line); }
+  body[data-mode="plain"] .day { border:none; }
   .tool { align-self:center; font:11px ui-monospace,Menlo,monospace; color:var(--mut);
           background:var(--chip); border-radius:10px; padding:1px 10px; }
-  .jump { position:absolute; right:18px; bottom:16px; background:var(--btn2); color:var(--fg);
-          border:1px solid var(--line); border-radius:50%; width:30px; height:30px; cursor:pointer;
-          display:flex; align-items:center; justify-content:center; box-shadow:0 2px 8px rgba(0,0,0,.3); }
-  .empty { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
-           color:var(--mut); gap:6px; }
-  .empty .spark { font-size:28px; color:var(--accent); opacity:.6; }
-  .toast { position:absolute; left:50%; transform:translateX(-50%); bottom:60px; background:var(--accent);
-           color:#fff; border-radius:6px; padding:5px 14px; font-size:12px; display:none; }
+  body[data-mode="plain"] .tool { align-self:flex-start; background:transparent; padding-left:12px; }
+  .jump { position:absolute; right:16px; bottom:14px; background:var(--btn2); color:var(--fg);
+          border:1px solid var(--line); border-radius:50%; width:28px; height:28px; cursor:pointer;
+          display:flex; align-items:center; justify-content:center; }
+  .gear-pop { position:absolute; top:34px; right:10px; background:var(--panel); border:1px solid var(--line);
+              border-radius:6px; padding:10px 12px; font-size:12px; z-index:5; display:none; width:230px;
+              box-shadow:0 6px 24px rgba(0,0,0,.35); }
+  .gear-pop.open { display:block; }
+  .gear-pop .row { display:flex; align-items:center; gap:6px; margin:5px 0; color:var(--fg); }
+  .gear-pop .lbl { color:var(--mut); width:78px; flex-shrink:0; }
+  .gear-pop .opt { border:1px solid var(--line); border-radius:9px; padding:0 9px; cursor:pointer; color:var(--mut); }
+  .gear-pop .opt.on { border-color:var(--accent); color:var(--accent); }
+  .gear-pop input[type=text] { background:var(--bg); border:1px solid var(--line); color:var(--fg);
+              border-radius:4px; padding:2px 6px; width:100px; font-size:12px; }
+  .note { color:#8a8a8a; font-size:11px; max-width:1100px; }
 </style>
 </head>
-<body data-theme="dark">
+<body data-theme="dark" data-mode="chat" data-names="on">
 
 <div class="demo-bar">
-  <b>Condition:</b>
-  <button class="on" data-state="normal">Normal</button>
-  <button data-state="huge">Huge (1,412 msgs)</button>
-  <button data-state="untitled">Untitled</button>
-  <button data-state="empty">Empty</button>
+  <b>Step 1:</b> sessions explorer (left) → <b>Step 2:</b> click a session → viewer (right). All controls work.
   <span style="opacity:.4">|</span>
-  <b>Theme:</b>
+  <b>VS Code theme:</b>
   <button data-theme-btn="dark" class="on">Dark</button>
   <button data-theme-btn="light">Light</button>
-  <span style="opacity:.5">— everything inside the frame is the real design; try the filters, ⌄ header fold, tools toggle</span>
 </div>
 
 <div class="vscode-frame">
-  <div class="vstab"><span class="dot">✳</span><span id="tabname"></span></div>
+  <!-- STEP 1: redesigned sidebar -->
+  <div class="sidebar">
+    <div class="shead"><span style="color:var(--accent)">✳</span> CLAUDE SESSIONS
+      <span class="grow"></span>
+      <span class="mini" title="Search">🔍</span><span class="mini" title="Grouping: smart ↔ raw">≣</span><span class="mini" title="Refresh">⟳</span>
+    </div>
+    <input class="ssearch" placeholder="filter sessions…">
+    <div class="slist" id="slist"></div>
+  </div>
+
+  <!-- STEP 2: viewer -->
   <div class="viewer">
     <div class="vhead">
       <div class="vrow">
         <span class="spark">✳</span><span class="title" id="vtitle"></span>
-        <button class="ibtn play" title="Resume in terminal — the ONLY thing that runs anything">▶</button>
-        <button class="ibtn" title="Copy entire conversation (all messages, current filter) as markdown — works even when not all messages are rendered" onclick="toast('Entire conversation copied — 1,412 messages')">⧉</button>
-        <button class="ibtn" title="Save conversation as .md file (same content as copy — for Obsidian vault)">⬇</button>
-        <button class="ibtn" title="Reveal raw transcript .jsonl in Finder / open in editor">{ }</button>
+        <button class="ibtn play" title="Resume in terminal">▶</button>
+        <button class="ibtn" title="Copy entire conversation (respects filters & names/labels settings)">⧉</button>
+        <button class="ibtn" title="Save as .md">⬇</button>
+        <button class="ibtn" title="Reveal raw .jsonl in Finder">{ }</button>
+        <button class="ibtn" id="gear" title="Viewer settings">⚙</button>
         <button class="ibtn" id="fold" title="Session details">⌄</button>
       </div>
+      <div class="dates" id="vdates"></div>
       <div class="details" id="details"></div>
+      <div class="gear-pop" id="gearpop">
+        <div class="row"><span class="lbl">Theme</span>
+          <span class="opt on" data-th="system">System</span><span class="opt" data-th="light">Light</span><span class="opt" data-th="dark">Dark</span></div>
+        <div class="row"><span class="lbl">Your label</span><input type="text" value="USER" id="ulabel"></div>
+        <div class="row" style="color:var(--mut);font-size:11px">System = follows VS Code theme. Same options live in VS Code Settings → Claude Sessions Viewer.</div>
+      </div>
     </div>
     <div class="fbar">
       <button class="fchip on" data-f="all">All</button>
-      <button class="fchip user" data-f="user">YURY only</button>
+      <button class="fchip" data-f="user" id="chipUser">USER only</button>
       <button class="fchip" data-f="ai">CLAUDE only</button>
-      <span class="right"><label><input type="checkbox" id="tools"> show tool markers</label></span>
+      <span class="right">
+        <label><input type="checkbox" id="mode"> plain flow (copy-clean)</label>
+        <label><input type="checkbox" id="names" checked> names</label>
+        <label><input type="checkbox" id="tools"> tools</label>
+      </span>
     </div>
     <div class="chat" id="chat"></div>
     <div class="jump" title="Jump to last message" onclick="jumpEnd()">↓</div>
-    <div class="toast" id="toast"></div>
   </div>
 </div>
 
+<p class="note">Copy ⧉ respects what you see: filters, names on/off, plain mode → paste is exactly the visible conversation. Names default to USER / CLAUDE (never a personal name — your friend's install says USER too; the label is editable in ⚙).</p>
+
 <script>
+const TREE = [
+  { f:"claude-sessions-viewer", n:8, sessions:[
+      { key:"normal", t:"Add Claude session launcher to VS Code", meta:"2e0cc0a3 · 1h" },
+      { t:"Review session extension for security", meta:"458db7ab · 3h" }]},
+  { f:"hermes", n:14, sessions:[
+      { t:"Integrate Mistral API for OCR processing", meta:"7fd044bf · 26d" },
+      { key:"untitled", t:"Untitled session 869cc5b6", meta:"869cc5b6 · 16d" }]},
+  { f:"reddit-parse-benchmark", n:5, sessions:[
+      { key:"huge", t:"Review Reddit dataset files for parsing benchmark", meta:"ad6c06bf · 3d" }]},
+  { f:"root (unassigned)", n:11, ic:"🗂", sessions:[
+      { t:"Identify terminal command cu application", meta:"91b0e89f ≈· 5d", apx:true },
+      { key:"empty", t:"Session b194dd8c", meta:"b194dd8c · 17d" }]},
+];
+
 const STATES = {
-  normal: {
-    tab:"Conversation — Add Claude session launcher…",
-    title:"Add Claude session launcher to VS Code folder context menu",
-    details:`📁 claude-sessions-viewer · session <code>2e0cc0a3</code> · 05–06 Jul 2026 · 38 messages · started in ~/yury-vibe-coding · transcript 912 KB`,
+  normal: { title:"Add Claude session launcher to VS Code folder context menu",
+    created:"created 05 Jul 2026 09:59", last:"last message 06 Jul 2026 11:11",
+    details:`📁 claude-sessions-viewer · session <code>2e0cc0a3</code> · 38 messages · transcript 912 KB · started in ~/yury-vibe-coding`,
     items:[
       {t:"day", v:"05 JUL 2026"},
       {t:"user", v:"can u modify VS Code that when I click on a specific folder I can run a claude session attached to this folder? now I need to open a new window every time and choose the folder"},
-      {t:"ai", v:"Good news: this is doable without opening new windows. Two realistic ways to get \"right-click folder → Claude session in that folder\" inside your current window — both launch a terminal-based claude session cwd'd to the folder."},
+      {t:"ai", v:"Good news: this is doable without opening new windows. Two realistic ways to get \"right-click folder → Claude session in that folder\" inside your current window."},
       {t:"tool", v:"[tool: AskUserQuestion]"},
-      {t:"user", v:"I need something similar to what I have on Codex. On the left I have all my projects that I work on. Inside them I have all my sessions and I can go over sessions easily."},
+      {t:"user", v:"I need something similar to what I have on Codex. On the left I have all my projects. Inside them all my sessions and I can go over sessions easily."},
       {t:"tool", v:"[tool: Bash] ×4 · [tool: Write] ×6"},
-      {t:"ai", v:"Data model confirmed: each session .jsonl carries an aiTitle, per-message cwd (ground truth for where it started), timestamps, and tool-call file paths I can use to attribute misfiled root sessions to the folder they actually worked in.", more:true},
       {t:"day", v:"06 JUL 2026"},
       {t:"user", v:"Ok, I want you to finish this, commit, and I want you to graduate this project…"},
-      {t:"ai", v:"Everything is done. Reload the window once to get v1.1.1. Duplicates — real bug, fixed: when you resume a session from a different folder, Claude copies the transcript into that folder's project dir."}
-    ]
-  },
-  huge: {
-    tab:"Conversation — Review Reddit dataset…",
-    title:"Review Reddit dataset files for parsing benchmark",
-    details:`📁 reddit-parse-benchmark · session <code>ad6c06bf</code> · 12 Jun – 03 Jul 2026 · 1,412 messages · transcript 30 MB`,
-    banner:`big session — 200 latest rendered for speed · <b onclick="toast('All 1,412 messages rendered — ⌘A now selects everything')">render all 1,412</b> (⌘A then selects all) · ⧉ always copies all`,
+      {t:"ai", v:"Everything is done. Reload the window once to get v1.1.1. Duplicates — real bug, fixed: when you resume a session from a different folder, Claude copies the transcript into that folder's project dir."}]},
+  huge: { title:"Review Reddit dataset files for parsing benchmark",
+    created:"created 12 Jun 2026 10:02", last:"last message 03 Jul 2026 18:44",
+    details:`📁 reddit-parse-benchmark · session <code>ad6c06bf</code> · 1,412 messages · transcript 30 MB`,
     items:[
       {t:"day", v:"03 JUL 2026"},
       {t:"user", v:"run the benchmark again with the new parser and compare against v2 results"},
       {t:"tool", v:"[tool: Bash] ×14 · [tool: Read] ×3"},
-      {t:"ai", v:"Benchmark complete. The v3 parser processes 1,066 threads in 42 s (v2: 61 s) with identical output on 1,064 threads; the 2 diffs are malformed unicode in source data, not parser regressions.", more:true},
+      {t:"ai", v:"Benchmark complete. The v3 parser processes 1,066 threads in 42 s (v2: 61 s) with identical output on 1,064 threads."},
       {t:"user", v:"good, store it as a finding"},
-      {t:"tool", v:"[tool: Bash]"},
-      {t:"ai", v:"Stored as FINDING-014 linked to INPUT-003. Benchmark data saved to data/parser-v3-benchmark-03-07-2026.json."}
-    ]
-  },
-  untitled: {
-    tab:"Conversation — 869cc5b6",
-    title:"Untitled session 869cc5b6",
-    details:`📁 ~/yury-vibe-coding (root) · session <code>869cc5b6</code> · 20 Jun 2026 · 3 messages`,
+      {t:"ai", v:"Stored as FINDING-014 linked to INPUT-003."}]},
+  untitled: { title:"Untitled session 869cc5b6",
+    created:"created 20 Jun 2026 14:11", last:"last message 20 Jun 2026 14:12",
+    details:`📁 hermes · session <code>869cc5b6</code> · 3 messages`,
     items:[
       {t:"day", v:"20 JUN 2026"},
       {t:"user", v:"hi"},
       {t:"ai", v:"Hi! I'm ready to help. What are we working on today?"},
-      {t:"user", v:"nothing, just checking the new setup works"}
-    ]
-  },
-  empty: { tab:"Conversation — b194dd8c", title:"Session b194dd8c",
-    details:`📁 ~/yury-vibe-coding (root) · session <code>b194dd8c</code> · 19 Jun 2026 · 0 readable messages`,
+      {t:"user", v:"nothing, just checking the new setup works"}]},
+  empty: { title:"Session b194dd8c",
+    created:"created 19 Jun 2026 09:30", last:"last message 19 Jun 2026 09:31",
+    details:`📁 root · session <code>b194dd8c</code> · 0 readable messages`,
     items:[], empty:true }
 };
 
-let cur = "normal", filter = "all";
+let cur="normal", filter="all";
+const $=id=>document.getElementById(id);
 function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
-function toast(m){ const t=document.getElementById("toast"); t.textContent=m; t.style.display="block";
-                   setTimeout(()=>t.style.display="none", 2200); }
-function jumpEnd(){ const c=document.getElementById("chat"); c.scrollTop=c.scrollHeight; }
+function jumpEnd(){ const c=$("chat"); c.scrollTop=c.scrollHeight; }
 
-function render(){
-  const st = STATES[cur];
-  const showTools = document.getElementById("tools").checked;
-  document.getElementById("tabname").textContent = st.tab;
-  document.getElementById("vtitle").textContent = st.title;
-  document.getElementById("details").innerHTML = st.details;
-  const chat = document.getElementById("chat");
-  chat.innerHTML = "";
-  if (st.empty) {
-    chat.innerHTML = `<div class="empty"><div class="spark">✳</div>` +
-      `<div>No readable conversation in this transcript</div>` +
-      `<div style="font-size:11.5px">(only tool traffic / system records — { } opens the raw file)</div></div>`;
-    return;
+function renderTree(){
+  $("slist").innerHTML = TREE.map(g =>
+    `<div class="sfolder"><span class="ic">${g.ic||"📁"}</span>${g.f}<span class="n">${g.n}</span></div>` +
+    g.sessions.map(s =>
+      `<div class="ssess ${s.key===cur?"sel":""}" ${s.key?`onclick="openSession('${s.key}')"`:""}>` +
+      `<span class="t">${s.t}</span><span class="meta">${s.apx?'<span class="apx">≈</span> ':''}${s.meta}</span></div>`).join("")
+  ).join("");
+}
+function openSession(k){ cur=k; renderTree(); renderViewer(); }
+
+function renderViewer(){
+  const st=STATES[cur], label=$("ulabel").value||"USER";
+  $("chipUser").textContent = label + " only";
+  $("vtitle").textContent = st.title;
+  $("vdates").textContent = `${st.created} → ${st.last}`;
+  $("details").innerHTML = st.details;
+  const chat=$("chat"); chat.innerHTML="";
+  if (st.empty){ chat.innerHTML=`<div style="margin:auto;text-align:center;color:var(--mut)">`+
+    `<div style="font-size:26px;color:var(--accent);opacity:.6">✳</div>No readable conversation — { } opens the raw file</div>`; return; }
+  for (const it of st.items){
+    if (it.t==="day"){ if(filter==="all") chat.insertAdjacentHTML("beforeend",`<div class="day">${it.v}</div>`); continue; }
+    if (it.t==="tool"){ if($("tools").checked && filter==="all") chat.insertAdjacentHTML("beforeend",`<div class="tool">${esc(it.v)}</div>`); continue; }
+    if (filter!=="all" && it.t!==filter) continue;
+    const who = it.t==="user" ? esc(label) : "CLAUDE";
+    chat.insertAdjacentHTML("beforeend",`<div class="msg ${it.t}"><div class="who">${who}</div>${esc(it.v)}</div>`);
   }
-  if (st.banner) chat.insertAdjacentHTML("beforeend", `<div class="banner">${st.banner}</div>`);
-  for (const it of st.items) {
-    if (it.t === "day") { if (filter === "all") chat.insertAdjacentHTML("beforeend", `<div class="day">${it.v}</div>`); continue; }
-    if (it.t === "tool") { if (showTools && filter === "all") chat.insertAdjacentHTML("beforeend", `<div class="tool">${esc(it.v)}</div>`); continue; }
-    if (filter !== "all" && it.t !== filter) continue;
-    const who = it.t === "user" ? "YURY" : "CLAUDE";
-    const more = it.more ? `<span class="more">show full message ▾</span>` : "";
-    chat.insertAdjacentHTML("beforeend",
-      `<div class="msg ${it.t}"><div class="who">${who}</div>${esc(it.v)}${more}</div>`);
-  }
-  jumpEnd(); // WhatsApp behavior: always open at the last message
+  jumpEnd();
 }
 
-document.querySelectorAll("[data-state]").forEach(b => b.onclick = () => {
-  document.querySelectorAll("[data-state]").forEach(x => x.classList.remove("on"));
-  b.classList.add("on"); cur = b.dataset.state; render();
-});
-document.querySelectorAll("[data-theme-btn]").forEach(b => b.onclick = () => {
-  document.querySelectorAll("[data-theme-btn]").forEach(x => x.classList.remove("on"));
-  b.classList.add("on"); document.body.dataset.theme = b.dataset.themeBtn;
-});
-document.querySelectorAll(".fchip").forEach(b => b.onclick = () => {
-  document.querySelectorAll(".fchip").forEach(x => x.classList.remove("on"));
-  b.classList.add("on"); filter = b.dataset.f; render();
-});
-document.getElementById("tools").onchange = render;
-document.getElementById("fold").onclick = () => {
-  const d = document.getElementById("details");
-  d.classList.toggle("open");
-  document.getElementById("fold").textContent = d.classList.contains("open") ? "⌃" : "⌄";
-};
-render();
+document.querySelectorAll("[data-theme-btn]").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("[data-theme-btn]").forEach(x=>x.classList.remove("on"));
+  b.classList.add("on"); document.body.dataset.theme=b.dataset.themeBtn; });
+document.querySelectorAll(".fchip").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll(".fchip").forEach(x=>x.classList.remove("on"));
+  b.classList.add("on"); filter=b.dataset.f; renderViewer(); });
+$("tools").onchange=renderViewer;
+$("mode").onchange=e=>document.body.dataset.mode=e.target.checked?"plain":"chat";
+$("names").onchange=e=>document.body.dataset.names=e.target.checked?"on":"off";
+$("ulabel").oninput=renderViewer;
+$("fold").onclick=()=>{ const d=$("details"); d.classList.toggle("open");
+  $("fold").textContent=d.classList.contains("open")?"⌃":"⌄"; };
+$("gear").onclick=()=>$("gearpop").classList.toggle("open");
+document.querySelectorAll("[data-th]").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("[data-th]").forEach(x=>x.classList.remove("on")); b.classList.add("on");
+  if(b.dataset.th!=="system") document.body.dataset.theme=b.dataset.th; });
+renderTree(); renderViewer();
 </script>
 </body>
 </html>
