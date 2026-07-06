@@ -105,7 +105,16 @@ class SessionTreeProvider {
       this.loading = vscode.window.withProgress(
         { location: { viewId: 'claudeSessions.tree' }, title: 'Indexing Claude sessions…' },
         async () => {
-          const sessions = await indexAll(this.cacheFile);
+          const indexed = await indexAll(this.cacheFile);
+          // Resuming a session from another directory copies its transcript
+          // into that project dir — same session id in several files. Keep
+          // the freshest copy only.
+          const byId = new Map();
+          for (const s of indexed) {
+            const prev = byId.get(s.id);
+            if (!prev || (s.mtimeMs || 0) > (prev.mtimeMs || 0)) byId.set(s.id, s);
+          }
+          const sessions = [...byId.values()];
           const root = this.workspaceRoot;
           const map = new Map();
           for (const s of sessions) {
@@ -177,6 +186,7 @@ class SessionTreeProvider {
     if (element.kind === 'folder') {
       const g = element.group;
       const item = new vscode.TreeItem(g.label, vscode.TreeItemCollapsibleState.Expanded);
+      item.id = 'f:' + g.folderPath + ':' + g.label;
       item.description = `${g.sessions.length}`;
       item.iconPath = new vscode.ThemeIcon(g.label === 'root (unassigned)' ? 'inbox' : 'folder');
       item.contextValue = 'folder';
@@ -201,6 +211,7 @@ class SessionTreeProvider {
         ? vscode.TreeItemCollapsibleState.Collapsed
         : vscode.TreeItemCollapsibleState.None
     );
+    item.id = 's:' + s.id;
     item.description = `${s.id.slice(0, 8)} · ${relativeAge(s.lastTs)}${s.byContent ? ' ≈' : ''}`;
     item.iconPath = new vscode.ThemeIcon('comment-discussion');
     item.contextValue = 'session';
@@ -337,7 +348,7 @@ function activate(context) {
     let timer = null;
     const watcher = fs.watch(PROJECTS_DIR, { recursive: true }, () => {
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => provider.refresh(), 5000);
+      timer = setTimeout(() => provider.refresh(), 20000);
     });
     context.subscriptions.push({ dispose: () => watcher.close() });
   } catch {}
