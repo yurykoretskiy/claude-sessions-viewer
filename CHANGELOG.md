@@ -6,6 +6,44 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.8.4] — 2026-07-06
+
+### Fixed
+- Switching between Folders A-Z and Chronological now keeps the last selected /
+  reviewed session selected and expands its folder in the new mode.
+- Chronological folder rows no longer show the session count after the folder
+  name; the visible `[age]` label is the important signal in that mode.
+
+## [1.8.3] — 2026-07-06
+
+### Changed
+- Chronological mode now renders visible `[age]` labels in folder and session
+  row text, so "last updated" remains visible even when VS Code clips the
+  right-side description column.
+
+## [1.8.2] — 2026-07-06
+
+### Fixed
+- The expand/collapse toolbar button now actually overrides VS Code's remembered
+  tree expansion state by refreshing folder item ids when the button is used.
+
+## [1.8.1] — 2026-07-06
+
+### Changed
+- Tree ordering is now exactly two modes:
+  - **Folders A-Z**: one row per folder, alphabetically sorted, sessions newest
+    first inside each folder.
+  - **Chronological**: newest sessions first, still wrapped in folder rows; a
+    folder can appear multiple times when its sessions are separated by time.
+- Removed current-project pinning/special folder icon from the tree. All folder
+  rows use the same folder spark icon, with only `· gone` marking deleted
+  folders.
+- Replaced the misleading native collapse-all button with explicit
+  expand-folders / collapse-folders commands controlled by this extension.
+- Removed the tree search button/command; VS Code's normal tree filtering is
+  enough here and avoids duplicate search surfaces.
+- README updated to describe the two actual tree modes.
+
 ## [1.8.0] — 2026-07-06
 
 ### Changed

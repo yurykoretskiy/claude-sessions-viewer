@@ -49,35 +49,76 @@ class SessionTreeProvider {
     this.context = context;
     this._onDidChangeTreeData = new vscode.EventEmitter();
     this.onDidChangeTreeData = this._onDidChangeTreeData.event;
-    this.groups = []; // [{ label, folderPath, kind, sessions: [...] }]
+    this.groups = []; // [{ id, label, folderPath, sessions: [...] }]
     this.loaded = false;
     this.loading = null;
-    // 'smart' = group by the real working folder recorded in the transcript;
-    // 'raw' = group by Claude's recorded cwd without workspace-relative folding.
-    this.groupMode = context.globalState.get('groupMode', 'smart');
+    this.expandedAll = false;
+    this.expansionRevision = 0;
+    this.selectedSessionId = context.globalState.get('selectedSessionId', null);
+    // 'folders' = one folder row, A-Z, with all sessions inside.
+    // 'chronological' = newest sessions first, wrapped in folder rows; a folder
+    // can appear more than once when its sessions are separated by time.
+    this.treeMode = context.globalState.get('treeMode', 'folders');
   }
 
-  toggleGrouping() {
-    this.groupMode = this.groupMode === 'smart' ? 'raw' : 'smart';
-    this.context.globalState.update('groupMode', this.groupMode);
+  async toggleGrouping() {
+    const sessionId = this.selectedSessionId;
+    this.treeMode = this.treeMode === 'folders' ? 'chronological' : 'folders';
+    this.context.globalState.update('treeMode', this.treeMode);
     this.updateModeUi();
     vscode.window.setStatusBarMessage(
-      this.groupMode === 'smart'
-        ? 'Claude Sessions: grouped by real working folder.'
-        : 'Claude Sessions: grouped by Claude raw storage/cwd.',
+      this.treeMode === 'folders'
+        ? 'Claude Sessions: folders A-Z.'
+        : 'Claude Sessions: newest sessions first.',
       3500
     );
     this.refresh();
+    if (sessionId && this.view) {
+      await this.ensureLoaded();
+      await this.revealSessionById(sessionId);
+    }
   }
 
-  // Persistent mode indicator: text next to the view title + which title
-  // button (list-tree vs list-flat icon) is shown via the context key.
+  setExpandedAll(expanded) {
+    if (this.expandedAll === expanded) return;
+    this.expandedAll = expanded;
+    this.expansionRevision++;
+    this.updateModeUi();
+    this._onDidChangeTreeData.fire();
+  }
+
+  rememberSession(node) {
+    if (!node || node.kind !== 'session' || !node.session || !node.session.id) return;
+    this.selectedSessionId = node.session.id;
+    this.context.globalState.update('selectedSessionId', node.session.id);
+  }
+
+  async revealSessionById(sessionId, opts = {}) {
+    if (!sessionId || !this.view) return false;
+    const node = this.allSessions().find((n) => n.session.id === sessionId);
+    if (!node) return false;
+    this.rememberSession(node);
+    try {
+      await this.view.reveal(node, {
+        select: opts.select !== false,
+        expand: true,
+        focus: opts.focus === true,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // Persistent mode indicator: text next to the view title + which title buttons
+  // are shown via context keys.
   updateModeUi() {
     if (this.view) {
-      const mode = this.groupMode === 'smart' ? 'working folders' : 'Claude raw storage';
+      const mode = this.treeMode === 'folders' ? 'folders A-Z' : 'chronological';
       this.view.description = this.loaded ? mode : `${mode} · indexing`;
     }
-    vscode.commands.executeCommand('setContext', 'claudeSessions.mode', this.groupMode);
+    vscode.commands.executeCommand('setContext', 'claudeSessions.mode', this.treeMode);
+    vscode.commands.executeCommand('setContext', 'claudeSessions.expandedAll', this.expandedAll);
   }
 
   get cacheFile() {
@@ -108,18 +149,75 @@ class SessionTreeProvider {
     return { kind: 'loading' };
   }
 
-  attributeSession(s, root) {
-    // Returns { folderPath, label }. The transcript cwd is ground truth; do
-    // not re-file root sessions based on path mentions inside the conversation.
+  folderForSession(s, root) {
+    // The transcript cwd is ground truth; do not re-file root sessions based on
+    // path mentions inside the conversation.
     if (!s.cwd) return null;
     if (root && s.cwd === root) {
-      return { folderPath: root, label: path.basename(root) || shortHome(root) };
+      return { folderPath: root, label: this.folderLabel(root) };
     }
     if (root && s.cwd.startsWith(root + path.sep)) {
       const seg = s.cwd.slice(root.length + 1).split(path.sep)[0];
-      return { folderPath: path.join(root, seg), label: seg };
+      const folderPath = path.join(root, seg);
+      return { folderPath, label: this.folderLabel(folderPath) };
     }
-    return { folderPath: s.cwd, label: shortHome(s.cwd) };
+    return { folderPath: s.cwd, label: this.folderLabel(s.cwd) };
+  }
+
+  folderLabel(folderPath) {
+    if (!folderPath) return '';
+    if (folderPath === os.homedir()) return '~';
+    return path.basename(folderPath) || shortHome(folderPath);
+  }
+
+  buildFolderGroups(sessions, root) {
+    const map = new Map();
+    for (const s of sessions) {
+      const attr = this.folderForSession(s, root);
+      if (!attr) continue;
+      const key = attr.folderPath;
+      if (!map.has(key)) {
+        map.set(key, {
+          id: `f:${attr.folderPath}`,
+          label: attr.label,
+          folderPath: attr.folderPath,
+          sessions: [],
+        });
+      }
+      map.get(key).sessions.push(s);
+    }
+    const groups = [...map.values()];
+    for (const g of groups) {
+      g.sessions.sort((a, b) => (b.lastTs || '').localeCompare(a.lastTs || ''));
+      g.latest = g.sessions[0] ? g.sessions[0].lastTs || '' : '';
+    }
+    groups.sort((a, b) => a.label.localeCompare(b.label) || a.folderPath.localeCompare(b.folderPath));
+    return groups;
+  }
+
+  buildChronologicalGroups(sessions, root) {
+    const entries = [];
+    for (const s of sessions) {
+      const attr = this.folderForSession(s, root);
+      if (attr) entries.push({ session: s, folder: attr });
+    }
+    entries.sort((a, b) => (b.session.lastTs || '').localeCompare(a.session.lastTs || ''));
+    const groups = [];
+    for (const entry of entries) {
+      const prev = groups[groups.length - 1];
+      if (prev && prev.folderPath === entry.folder.folderPath) {
+        prev.sessions.push(entry.session);
+        continue;
+      }
+      groups.push({
+        id: `t:${groups.length}:${entry.folder.folderPath}:${entry.session.id}`,
+        label: entry.folder.label,
+        folderPath: entry.folder.folderPath,
+        latest: entry.session.lastTs || '',
+        sessions: [entry.session],
+      });
+    }
+    return groups;
   }
 
   async ensureLoaded() {
@@ -142,33 +240,10 @@ class SessionTreeProvider {
           }
           const sessions = [...byId.values()];
           const root = this.workspaceRoot;
-          const map = new Map();
-          for (const s of sessions) {
-            const attr =
-              this.groupMode === 'raw'
-                ? s.cwd
-                  ? { folderPath: s.cwd, label: shortHome(s.cwd) }
-                  : null
-                : this.attributeSession(s, root);
-            if (!attr) continue;
-            const key = attr.folderPath + '::' + attr.label;
-            if (!map.has(key)) {
-              map.set(key, { label: attr.label, folderPath: attr.folderPath, sessions: [] });
-            }
-            map.get(key).sessions.push(s);
-          }
-          this.groups = [...map.values()];
-          for (const g of this.groups) {
-            g.sessions.sort((a, b) => (b.lastTs || '').localeCompare(a.lastTs || ''));
-            g.latest = g.sessions[0] ? g.sessions[0].lastTs || '' : '';
-          }
-          this.groups.sort((a, b) => b.latest.localeCompare(a.latest));
-          // The project you have open always sits on top — reveal and
-          // orientation start there; everything else stays recency-ordered.
-          if (root) {
-            const i = this.groups.findIndex((g) => g.folderPath === root);
-            if (i > 0) this.groups.unshift(this.groups.splice(i, 1)[0]);
-          }
+          this.groups =
+            this.treeMode === 'chronological'
+              ? this.buildChronologicalGroups(sessions, root)
+              : this.buildFolderGroups(sessions, root);
           this.loaded = true;
           this.updateModeUi();
           this._onDidChangeTreeData.fire();
@@ -253,21 +328,33 @@ class SessionTreeProvider {
     }
     if (element.kind === 'folder') {
       const g = element.group;
-      const item = new vscode.TreeItem(g.label, vscode.TreeItemCollapsibleState.Collapsed);
-      item.id = 'f:' + g.folderPath + ':' + g.label;
-      const root = this.workspaceRoot;
-      // One folder icon for everyone; the only special mark is the project
-      // you have open. A dashed "outside the workspace" icon marked ~95% of
-      // groups in a cross-project tree — noise, not signal.
-      const icon = root && g.folderPath === root ? 'folder-root.svg' : 'folder-spark.svg';
+      const label =
+        this.treeMode === 'chronological' && g.latest
+          ? `${g.label} [${relativeAge(g.latest)}]`
+          : g.label;
+      const item = new vscode.TreeItem(
+        label,
+        this.expandedAll ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed
+      );
+      // VS Code preserves expansion state by TreeItem.id. Include a small
+      // revision so the explicit expand/collapse toolbar button can override
+      // the user's previous manual expansion state.
+      item.id = `${g.id}:${this.expansionRevision}:${this.expandedAll ? 'open' : 'closed'}`;
       let exists = true;
       try {
         exists = fs.statSync(g.folderPath).isDirectory();
       } catch {
         exists = false;
       }
-      item.description = exists ? `${g.sessions.length}` : `${g.sessions.length} · gone`;
-      item.iconPath = vscode.Uri.joinPath(this.context.extensionUri, 'assets', icon);
+      item.description =
+        this.treeMode === 'chronological'
+          ? exists
+            ? ''
+            : 'gone'
+          : exists
+            ? `${g.sessions.length}`
+            : `${g.sessions.length} · gone`;
+      item.iconPath = vscode.Uri.joinPath(this.context.extensionUri, 'assets', 'folder-spark.svg');
       item.contextValue = 'folder';
       item.tooltip = exists
         ? g.folderPath
@@ -284,10 +371,14 @@ class SessionTreeProvider {
     }
     const s = element.session;
     const title = this.displayTitle(s);
+    const label =
+      this.treeMode === 'chronological' && s.lastTs
+        ? `  [${relativeAge(s.lastTs)}] ${title}`
+        : '  ' + title;
     // Em-space padding: VS Code has no per-item indent API, and sessions at
     // the default tree indent read as siblings of the folders.
     const item = new vscode.TreeItem(
-      '  ' + title,
+      label,
       this.config.promptChildren && s.prompts && s.prompts.length
         ? vscode.TreeItemCollapsibleState.Collapsed
         : vscode.TreeItemCollapsibleState.None
@@ -351,11 +442,17 @@ function activate(context) {
   const provider = new SessionTreeProvider(context);
   const view = vscode.window.createTreeView('claudeSessions.tree', {
     treeDataProvider: provider,
-    showCollapseAll: true,
+    showCollapseAll: false,
   });
   context.subscriptions.push(view);
   provider.view = view;
   provider.updateModeUi();
+  context.subscriptions.push(
+    view.onDidChangeSelection((e) => {
+      const node = e.selection && e.selection[0];
+      provider.rememberSession(node);
+    })
+  );
 
   const viewer = new ConversationViewer(context);
   const panelFlagFile = path.join(context.globalStorageUri.fsPath, 'open-panel-flag.json');
@@ -387,6 +484,9 @@ function activate(context) {
     vscode.commands.registerCommand('claudeSessions.openSettings', () =>
       vscode.commands.executeCommand('workbench.action.openSettings', '@ext:yurykoretskiy.claude-sessions-viewer')
     ),
+
+    vscode.commands.registerCommand('claudeSessions.expandAll', () => provider.setExpandedAll(true)),
+    vscode.commands.registerCommand('claudeSessions.collapseAll', () => provider.setExpandedAll(false)),
 
     vscode.commands.registerCommand('claudeSessions.toggleGrouping', () => provider.toggleGrouping()),
     vscode.commands.registerCommand('claudeSessions.toggleGroupingAlt', () => provider.toggleGrouping()),
@@ -460,6 +560,7 @@ function activate(context) {
       try {
         await vscode.commands.executeCommand('workbench.view.extension.claudeSessions');
         await view.reveal(node, { select: true, expand: false, focus: false });
+        provider.rememberSession(node);
       } catch {}
       if (provider.config.revealOpenConversation) {
         await viewer.open(node.session, provider.displayTitle(node.session), node.group.label, {
@@ -470,27 +571,10 @@ function activate(context) {
 
     vscode.commands.registerCommand('claudeSessions.openConversation', async (node) => {
       try {
+        provider.rememberSession(node);
         await viewer.open(node.session, provider.displayTitle(node.session), node.group.label);
       } catch (e) {
         vscode.window.showErrorMessage(`Claude Sessions: could not open conversation — ${e.message}`);
-      }
-    }),
-
-    vscode.commands.registerCommand('claudeSessions.search', async () => {
-      await provider.ensureLoaded();
-      const items = provider.allSessions().map((n) => ({
-        label: `$(comment-discussion) ${provider.displayTitle(n.session)}`,
-        description: `${n.group.label} · ${n.session.id.slice(0, 8)} · ${relativeAge(n.session.lastTs)}`,
-        detail: n.session.firstPrompt || n.session.lastPrompt || '',
-        node: n,
-      }));
-      const pick = await vscode.window.showQuickPick(items, {
-        placeHolder: 'Search sessions by title, prompt, folder, or id — Enter opens review',
-        matchOnDescription: true,
-        matchOnDetail: true,
-      });
-      if (pick) {
-        await viewer.open(pick.node.session, provider.displayTitle(pick.node.session), pick.node.group.label);
       }
     }),
 

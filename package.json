@@ -2,7 +2,7 @@
   "name": "claude-sessions-viewer",
   "displayName": "Claude Sessions Viewer",
   "description": "Browse Claude Code sessions grouped by project folder; right-click any folder to start a Claude session there.",
-  "version": "1.8.0",
+  "version": "1.8.4",
   "publisher": "yurykoretskiy",
   "license": "MIT",
   "engines": {
@@ -55,23 +55,18 @@
       },
       {
         "command": "claudeSessions.toggleGrouping",
-        "title": "Claude Sessions: Grouping by working folders — click for Claude raw storage",
+        "title": "Claude Sessions: Sort by folders A-Z — click for chronological",
         "icon": "$(list-tree)"
       },
       {
         "command": "claudeSessions.toggleGroupingAlt",
-        "title": "Claude Sessions: Grouping by Claude raw storage — click for working folders",
+        "title": "Claude Sessions: Sort chronological — click for folders A-Z",
         "icon": "$(list-flat)"
       },
       {
         "command": "claudeSessions.resume",
         "title": "Claude: Resume session",
         "icon": "$(play)"
-      },
-      {
-        "command": "claudeSessions.search",
-        "title": "Claude Sessions: Search sessions",
-        "icon": "$(search)"
       },
       {
         "command": "claudeSessions.rename",
@@ -86,6 +81,16 @@
         "command": "claudeSessions.refresh",
         "title": "Claude Sessions: Refresh",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "claudeSessions.expandAll",
+        "title": "Claude Sessions: Expand folders",
+        "icon": "$(expand-all)"
+      },
+      {
+        "command": "claudeSessions.collapseAll",
+        "title": "Claude Sessions: Collapse folders",
+        "icon": "$(collapse-all)"
       },
       {
         "command": "claudeSessions.openTranscript",
@@ -116,18 +121,23 @@
       ],
       "view/title": [
         {
-          "command": "claudeSessions.search",
-          "when": "view == claudeSessions.tree",
+          "command": "claudeSessions.toggleGrouping",
+          "when": "view == claudeSessions.tree && claudeSessions.mode == 'folders'",
           "group": "navigation@0"
         },
         {
-          "command": "claudeSessions.toggleGrouping",
-          "when": "view == claudeSessions.tree && claudeSessions.mode == 'smart'",
+          "command": "claudeSessions.toggleGroupingAlt",
+          "when": "view == claudeSessions.tree && claudeSessions.mode == 'chronological'",
+          "group": "navigation@0"
+        },
+        {
+          "command": "claudeSessions.expandAll",
+          "when": "view == claudeSessions.tree && !claudeSessions.expandedAll",
           "group": "navigation@1"
         },
         {
-          "command": "claudeSessions.toggleGroupingAlt",
-          "when": "view == claudeSessions.tree && claudeSessions.mode == 'raw'",
+          "command": "claudeSessions.collapseAll",
+          "when": "view == claudeSessions.tree && claudeSessions.expandedAll",
           "group": "navigation@1"
         },
         {

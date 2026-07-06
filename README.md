@@ -12,12 +12,13 @@ into a browsable map.
 
 ## Features
 
-- **Sessions by folder** — activity-bar tree of all local sessions: title,
-  id, age. Folders sorted by recent activity.
+- **Two tree orders** — folder index or chronological feed. Folder mode shows
+  folders A-Z, with each folder's sessions newest first. Chronological mode
+  shows newest sessions first, still wrapped by folder, so a folder can appear
+  more than once; visible `[age]` labels show when each row was last updated.
 - **Working-folder grouping** — sessions are grouped by the real folder they
-  ran in (the transcript's recorded `cwd`): your current project's sessions
-  under the project name, everything else under its own path. Toggle to
-  Claude's raw storage anytime.
+  ran in (the transcript's recorded `cwd`). No current-workspace guessing and
+  no content-based re-filing.
 - **Conversation viewer** — click a session and read it like a chat: your
   messages right, Claude's left, tool noise hidden (optional markers),
   opens at the last message. Read-only until you press the accent resume
@@ -32,8 +33,6 @@ into a browsable map.
   in the status bar) locates the session you're working in right now:
   highlights it in the tree. New users can also open the conversation review
   pane automatically; constant users can switch that off.
-- **Search** — fuzzy match across titles, prompts, folders, ids; opens the
-  read-only review pane.
 - **Rename** — give untitled sessions a custom name (stored locally).
 - **Session-level first** — the tree defaults to collapsed folders and
   folder → session browsing. Prompt rows under sessions can be switched on in
@@ -53,10 +52,12 @@ into a browsable map.
   transcript file under `~/.claude/projects/`. The extension reads those
   files — it never runs Claude, never phones home, and needs no configuration.
 - **How grouping works.** Each transcript records the folder the session was
-  started in. Sessions are grouped by that folder, newest first inside each
-  group. The project you currently have open is pinned to the top with its
-  own icon. A folder marked `gone` no longer exists on disk — its sessions
-  are kept as browsable history.
+  started in. Folder mode sorts those folders A-Z and keeps each folder's
+  sessions newest first. Chronological mode sorts sessions newest first and
+  wraps them in folder rows, so the same folder can appear multiple times.
+  Chronological rows include visible `[age]` labels such as `[4m]` or `[2d]`.
+  A folder marked `gone` no longer exists on disk — its sessions are kept as
+  browsable history.
 - **When the list updates.** There is no background watcher. The tree
   re-indexes when the panel is opened or becomes visible again, when you
   press the ↻ refresh button, and when you press reveal (✳). So a session
@@ -89,7 +90,8 @@ On activation the extension indexes `~/.claude/projects` (your existing
 Claude Code sessions — nothing to configure). Indexing streams each
 transcript once and caches results, so the first load takes a few seconds
 per few hundred sessions and is instant afterwards; only changed files are
-re-read. The tree refreshes itself when sessions change, or hit ⟳.
+re-read. The tree refreshes when the panel opens or becomes visible, when you
+press ⟳, or when you reveal the current session.
 Conversations are parsed lazily — only when you open one. On a cold first
 run, the tree shows an indexing row immediately instead of staying blank.
 Prompt/message preview rows under sessions are off by default for faster
