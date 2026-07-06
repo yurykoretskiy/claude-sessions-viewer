@@ -6,6 +6,18 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.5.0] — 2026-07-06
+
+### Added
+- **Settings are now first-class**: a ⚙ gear in the view title (and the
+  "Claude Sessions: Open Settings" command) opens the extension's settings.
+  Settings are grouped into titled sections (Claude Sessions Viewer /
+  Conversation Viewer / Sessions Tree) with ordered, richly described options
+  and dropdown labels — controllable like any Marketplace extension.
+- Marketplace packaging: 256px PNG icon, keywords, gallery banner, and a
+  `.vscodeignore` that keeps private working notes (findings/inputs/handoffs/
+  docs/poc) out of the published package.
+
 ## [1.4.5] — 2026-07-06
 
 ### Fixed

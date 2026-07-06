@@ -2,14 +2,15 @@
   "name": "claude-sessions-viewer",
   "displayName": "Claude Sessions Viewer",
   "description": "Browse Claude Code sessions grouped by project folder; right-click any folder to start a Claude session there.",
-  "version": "1.4.5",
+  "version": "1.5.0",
   "publisher": "yury",
   "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Visualization"
   ],
   "main": "./extension.js",
   "activationEvents": [
@@ -90,6 +91,11 @@
       {
         "command": "claudeSessions.copySessionId",
         "title": "Claude: Copy session id"
+      },
+      {
+        "command": "claudeSessions.openSettings",
+        "title": "Claude Sessions: Open Settings",
+        "icon": "$(gear)"
       }
     ],
     "menus": {
@@ -125,6 +131,11 @@
           "command": "claudeSessions.refresh",
           "when": "view == claudeSessions.tree",
           "group": "navigation@2"
+        },
+        {
+          "command": "claudeSessions.openSettings",
+          "when": "view == claudeSessions.tree",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
@@ -164,50 +175,99 @@
         }
       ]
     },
-    "configuration": {
-      "title": "Claude Sessions Viewer",
-      "properties": {
-        "claudeSessionsViewer.theme": {
-          "type": "string",
-          "enum": [
-            "system",
-            "light",
-            "dark"
-          ],
-          "default": "system",
-          "description": "Conversation viewer theme. System follows the VS Code theme."
-        },
-        "claudeSessionsViewer.userLabel": {
-          "type": "string",
-          "default": "USER",
-          "description": "Label shown on your messages in the conversation viewer and in copies/exports."
-        },
-        "claudeSessionsViewer.reveal.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show and enable Reveal current session controls."
-        },
-        "claudeSessionsViewer.reveal.openConversation": {
-          "type": "boolean",
-          "default": true,
-          "description": "When revealing the current session, also open the read-only conversation viewer beside the active editor. New users see the review pane by default; switch this off for tree-only reveal."
-        },
-        "claudeSessionsViewer.liveRefresh.enabled": {
-          "type": "boolean",
-          "default": false,
-          "description": "Refresh an open conversation viewer while its transcript changes. Off by default to keep active sessions lighter."
-        },
-        "claudeSessionsViewer.promptChildren.enabled": {
-          "type": "boolean",
-          "default": false,
-          "description": "Show user prompt/message preview rows under each session in the tree. Off by default for session-level browsing."
+    "configuration": [
+      {
+        "title": "Claude Sessions Viewer",
+        "order": 1,
+        "properties": {
+          "claudeSessionsViewer.reveal.enabled": {
+            "type": "boolean",
+            "default": true,
+            "order": 1,
+            "scope": "window",
+            "markdownDescription": "Show the **Reveal current session** ✳ button on the Claude Code panel tab and in the status bar."
+          },
+          "claudeSessionsViewer.reveal.openConversation": {
+            "type": "boolean",
+            "default": true,
+            "order": 2,
+            "scope": "window",
+            "markdownDescription": "When you reveal the current session, also open its **read-only conversation** beside the editor.\n\n- On (default): great for exploring — reveal shows the chat.\n- Off: reveal only highlights the session in the tree."
+          }
+        }
+      },
+      {
+        "title": "Conversation Viewer",
+        "order": 2,
+        "properties": {
+          "claudeSessionsViewer.theme": {
+            "type": "string",
+            "enum": [
+              "system",
+              "light",
+              "dark"
+            ],
+            "enumDescriptions": [
+              "Follow the current VS Code theme",
+              "Always light",
+              "Always dark"
+            ],
+            "default": "system",
+            "order": 1,
+            "scope": "window",
+            "markdownDescription": "Theme for the conversation viewer."
+          },
+          "claudeSessionsViewer.userLabel": {
+            "type": "string",
+            "default": "USER",
+            "order": 2,
+            "scope": "window",
+            "markdownDescription": "Label shown on **your** messages in the viewer and in copies/exports. Kept generic so shared conversations never expose a personal name."
+          },
+          "claudeSessionsViewer.liveRefresh.enabled": {
+            "type": "boolean",
+            "default": false,
+            "order": 3,
+            "scope": "window",
+            "markdownDescription": "Keep an open conversation updating **live** while its session keeps writing. Off by default to stay light."
+          }
+        }
+      },
+      {
+        "title": "Sessions Tree",
+        "order": 3,
+        "properties": {
+          "claudeSessionsViewer.promptChildren.enabled": {
+            "type": "boolean",
+            "default": false,
+            "order": 1,
+            "scope": "window",
+            "markdownDescription": "Show your prompt/message preview rows **under each session** in the tree. Off by default for faster, session-level browsing."
+          }
         }
       }
-    }
+    ]
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/yurykoretskiy/claude-sessions-viewer.git"
   },
-  "homepage": "https://github.com/yurykoretskiy/claude-sessions-viewer#readme"
+  "homepage": "https://github.com/yurykoretskiy/claude-sessions-viewer#readme",
+  "icon": "assets/icon.png",
+  "keywords": [
+    "claude",
+    "claude-code",
+    "anthropic",
+    "session",
+    "history",
+    "conversation",
+    "transcript",
+    "viewer",
+    "ai",
+    "productivity"
+  ],
+  "galleryBanner": {
+    "color": "#1a1a1b",
+    "theme": "dark"
+  }
 }

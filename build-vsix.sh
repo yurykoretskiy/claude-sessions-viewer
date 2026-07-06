@@ -11,7 +11,7 @@ STAGE=$(mktemp -d)
 
 mkdir -p "$STAGE/extension/assets/screenshots"
 cp package.json *.js README.md CHANGELOG.md LICENSE "$STAGE/extension/"
-cp assets/*.svg "$STAGE/extension/assets/"
+cp assets/*.svg assets/icon.png "$STAGE/extension/assets/"
 cp assets/screenshots/*.png "$STAGE/extension/assets/screenshots/"
 
 cat > "$STAGE/extension.vsixmanifest" <<EOF

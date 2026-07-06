@@ -1,0 +1,19 @@
+# Keep the Marketplace package to product only — exclude private working
+# notes, dev scaffolding, and build artifacts.
+.git/**
+.gitignore
+build-vsix.sh
+*.vsix
+
+# Private working notes / ledger (must NOT ship to the Marketplace)
+findings/**
+findings-history.md
+inputs/**
+input-history.md
+handoffs/**
+HANDOFF.md
+docs/**
+poc/**
+
+# Design sources kept in repo but not needed in the package
+assets/icon-source.html
