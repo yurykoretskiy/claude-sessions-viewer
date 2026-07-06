@@ -5,9 +5,6 @@ const os = require('os');
 const { indexAll } = require('./indexer');
 const { ConversationViewer } = require('./viewer');
 
-const MIN_MENTIONS = 3; // content-attribution threshold for root-started sessions
-const IGNORED_SEGMENTS = new Set(['node_modules', 'venv', '__pycache__', 'dist', 'build']);
-
 function relativeAge(iso) {
   if (!iso) return '';
   const ms = Date.now() - new Date(iso).getTime();
@@ -55,8 +52,8 @@ class SessionTreeProvider {
     this.groups = []; // [{ label, folderPath, kind, sessions: [...] }]
     this.loaded = false;
     this.loading = null;
-    // 'smart' = attribute root sessions by transcript content;
-    // 'raw' = mirror Claude's own index (group by ~/.claude/projects dir).
+    // 'smart' = group by the real working folder recorded in the transcript;
+    // 'raw' = group by Claude's recorded cwd without workspace-relative folding.
     this.groupMode = context.globalState.get('groupMode', 'smart');
   }
 
@@ -66,7 +63,7 @@ class SessionTreeProvider {
     this.updateModeUi();
     vscode.window.setStatusBarMessage(
       this.groupMode === 'smart'
-        ? 'Claude Sessions: grouped by working folder; root sessions may be re-filed by touched paths.'
+        ? 'Claude Sessions: grouped by real working folder.'
         : 'Claude Sessions: grouped by Claude raw storage/cwd.',
       3500
     );
@@ -112,33 +109,17 @@ class SessionTreeProvider {
   }
 
   attributeSession(s, root) {
-    // Returns { folderPath, label, byContent }
+    // Returns { folderPath, label }. The transcript cwd is ground truth; do
+    // not re-file root sessions based on path mentions inside the conversation.
     if (!s.cwd) return null;
     if (root && s.cwd === root) {
-      let best = null;
-      let bestCount = 0;
-      for (const [seg, count] of Object.entries(s.folderMentions || {})) {
-        if (seg.startsWith('.') || IGNORED_SEGMENTS.has(seg)) continue;
-        if (count < MIN_MENTIONS || count <= bestCount) continue;
-        const p = path.join(root, seg);
-        try {
-          if (!fs.statSync(p).isDirectory()) continue;
-        } catch {
-          continue;
-        }
-        best = seg;
-        bestCount = count;
-      }
-      if (best) {
-        return { folderPath: path.join(root, best), label: best, byContent: true };
-      }
-      return { folderPath: root, label: 'root (unassigned)', byContent: false };
+      return { folderPath: root, label: path.basename(root) || shortHome(root) };
     }
     if (root && s.cwd.startsWith(root + path.sep)) {
       const seg = s.cwd.slice(root.length + 1).split(path.sep)[0];
-      return { folderPath: path.join(root, seg), label: seg, byContent: false };
+      return { folderPath: path.join(root, seg), label: seg };
     }
-    return { folderPath: s.cwd, label: shortHome(s.cwd), byContent: false };
+    return { folderPath: s.cwd, label: shortHome(s.cwd) };
   }
 
   async ensureLoaded() {
@@ -166,7 +147,7 @@ class SessionTreeProvider {
             const attr =
               this.groupMode === 'raw'
                 ? s.cwd
-                  ? { folderPath: s.cwd, label: shortHome(s.cwd), byContent: false }
+                  ? { folderPath: s.cwd, label: shortHome(s.cwd) }
                   : null
                 : this.attributeSession(s, root);
             if (!attr) continue;
@@ -174,7 +155,7 @@ class SessionTreeProvider {
             if (!map.has(key)) {
               map.set(key, { label: attr.label, folderPath: attr.folderPath, sessions: [] });
             }
-            map.get(key).sessions.push({ ...s, byContent: attr.byContent });
+            map.get(key).sessions.push(s);
           }
           this.groups = [...map.values()];
           for (const g of this.groups) {
@@ -271,7 +252,7 @@ class SessionTreeProvider {
       item.description = `${g.sessions.length}`;
       const root = this.workspaceRoot;
       const icon =
-        g.label === 'root (unassigned)'
+        root && g.folderPath === root
           ? 'folder-root.svg'
           : root && !g.folderPath.startsWith(root)
             ? 'folder-outside.svg'
@@ -301,7 +282,7 @@ class SessionTreeProvider {
     );
     item.id = 's:' + s.id;
     const live = s.mtimeMs && Date.now() - s.mtimeMs < 5 * 60 * 1000 ? '● ' : '';
-    item.description = `${live}${s.id.slice(0, 8)} · ${relativeAge(s.lastTs)}${s.byContent ? ' ≈' : ''}`;
+    item.description = `${live}${s.id.slice(0, 8)} · ${relativeAge(s.lastTs)}`;
     // No icon on session rows — the space goes to the session title instead.
     item.contextValue = 'session';
     item.tooltip = new vscode.MarkdownString(
@@ -310,7 +291,6 @@ class SessionTreeProvider {
         '',
         `id: \`${s.id}\``,
         `started in: \`${shortHome(s.cwd || '?')}\``,
-        s.byContent ? '_attributed by content (session started at workspace root)_' : '',
         s.lastPrompt ? `last prompt: ${s.lastPrompt.slice(0, 200)}` : '',
       ].join('\n')
     );

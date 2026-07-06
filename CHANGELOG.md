@@ -6,6 +6,16 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.7.1] — 2026-07-06
+
+### Fixed
+- **Working-folder grouping now uses the real transcript `cwd` as ground
+  truth.** Sessions started in the current project root stay under the project
+  name (for example `claude-sessions-viewer`) instead of being re-filed into a
+  subfolder such as `assets` because that folder was mentioned in the
+  transcript.
+- Removed the misleading content-attribution marker (`≈`) from session rows.
+
 ## [1.7.0] — 2026-07-06
 
 ### Changed
