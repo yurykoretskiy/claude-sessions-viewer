@@ -34,6 +34,10 @@ into a browsable map.
 - **Search** — fuzzy match across titles, prompts, folders, ids.
 - **Rename** — give untitled sessions a custom name (stored locally).
 
+**Reveal the session you're in right now** — ✳ on the panel tab → highlighted in the tree, conversation opens beside, updating live:
+
+![Reveal current session](assets/screenshots/reveal-current.png)
+
 | Light theme | Copy-clean plain flow | Filter: your messages |
 | --- | --- | --- |
 | ![Light](assets/screenshots/viewer-light.png) | ![Plain](assets/screenshots/plain-mode.png) | ![Filter](assets/screenshots/filter-user.png) |
@@ -86,6 +90,11 @@ Working on this repo with Claude Code, Codex, or similar? Read
 [AGENTS.md](AGENTS.md) — file map, build/deploy contract, and the invariants
 that must not be broken. Deferred ideas live in [BACKLOG.md](BACKLOG.md);
 maintainer's working notes in `docs/`, `findings/`, `inputs/`, `handoffs/`.
+
+## Changelog
+
+Version history in [CHANGELOG.md](CHANGELOG.md); every release ships an
+installable `.vsix` on the [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
 ## License
 

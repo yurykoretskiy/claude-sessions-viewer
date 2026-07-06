@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Reveal current session — static mock for README screenshot</title>
+<style>
+  :root { --bg:#1e1e1e; --panel:#252526; --side:#212223; --line:#3c3c3c; --fg:#ccc; --mut:#8a8a8a;
+    --accent:#d97757; --user-bub:#3a2620; --ai-bub:#2a2d2e; --chip:#333; --sel:#094771; --hov:#2a2d2e; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#0b0b0b; font:13px/1.5 -apple-system,"SF Pro Text","Segoe UI",sans-serif;
+         display:flex; justify-content:center; padding:20px; }
+  .win { width:1280px; border-radius:8px; overflow:hidden; box-shadow:0 12px 40px rgba(0,0,0,.5);
+         display:flex; flex-direction:column; background:var(--bg); color:var(--fg); height:640px; }
+
+  .tabbar { display:flex; align-items:center; background:#191919; border-bottom:1px solid var(--line); }
+  .tab { display:flex; align-items:center; gap:7px; padding:8px 14px; font-size:12.5px; border-right:1px solid var(--line); }
+  .tab.active { background:var(--bg); }
+  .tab .sp { color:var(--accent); }
+  .tab .x { color:var(--mut); margin-left:6px; }
+  .tabbar .actions { margin-left:auto; display:flex; gap:10px; padding:0 12px; color:var(--mut); font-size:14px; align-items:center; }
+  .reveal-btn { color:var(--accent); background:rgba(217,119,87,.14); border:1px solid rgba(217,119,87,.5);
+                border-radius:5px; padding:1px 8px; position:relative; }
+  .hint { position:absolute; top:34px; right:8px; background:var(--accent); color:#fff; font-size:11.5px;
+          border-radius:6px; padding:4px 10px; white-space:nowrap; z-index:9; }
+  .hint::before { content:""; position:absolute; top:-5px; right:14px; border:5px solid transparent; border-bottom-color:var(--accent); border-top:0; }
+
+  .main { flex:1; display:flex; min-height:0; }
+  .sidebar { width:250px; background:var(--side); border-right:1px solid var(--line); padding:6px; font-size:12.5px; }
+  .shead { font-size:11px; letter-spacing:.07em; color:var(--mut); padding:4px 6px 8px; }
+  .shead .sp { color:var(--accent); }
+  .f { display:flex; gap:6px; padding:3px 6px; font-weight:600; align-items:center; }
+  .f .n { margin-left:auto; color:var(--mut); font-weight:400; font-size:11px; }
+  .f .ic { color:var(--accent); }
+  .s { display:flex; gap:6px; padding:3px 6px 3px 22px; border-radius:5px; align-items:baseline; }
+  .s .meta { margin-left:auto; color:var(--mut); font-size:10.5px; font-family:ui-monospace,monospace; }
+  .s.sel { background:var(--sel); }
+  .live { color:#7ee08a; }
+
+  .paneL { flex:1.05; border-right:1px solid var(--line); display:flex; flex-direction:column; }
+  .paneL .ph { padding:8px 12px; color:var(--mut); font-size:11.5px; border-bottom:1px solid var(--line); }
+  .paneL .body { flex:1; padding:14px; color:var(--mut); font-size:12.5px; }
+  .paneL .inp { margin:12px; border:1px solid var(--line); border-radius:8px; padding:8px 12px; color:var(--mut); }
+
+  .paneR { flex:1.35; display:flex; flex-direction:column; }
+  .vhead { padding:7px 12px; border-bottom:1px solid var(--line); background:var(--panel); }
+  .vrow { display:flex; align-items:center; gap:8px; }
+  .vrow .title { font-weight:600; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:13px; }
+  .vrow .i { color:var(--mut); }
+  .vrow .play { color:var(--accent); }
+  .dates { color:var(--mut); font-size:11px; margin-top:3px; }
+  .dates b { color:#7ee08a; font-weight:600; }
+  .chat { flex:1; padding:12px 14px; display:flex; flex-direction:column; gap:9px; overflow:hidden; }
+  .msg { max-width:78%; padding:7px 11px; border-radius:10px; font-size:12.5px; }
+  .who { font-size:10.5px; color:var(--mut); margin-bottom:2px; }
+  .u { align-self:flex-end; background:var(--user-bub); border-right:3px solid var(--accent); }
+  .a { align-self:flex-start; background:var(--ai-bub); }
+  .a .who::before { content:"✳ "; color:var(--accent); }
+</style>
+</head>
+<body>
+<div class="win">
+  <div class="tabbar">
+    <div class="tab active"><span class="sp">✳</span> Add Claude session launc… <span class="x">×</span></div>
+    <div class="tab">extension.js <span class="x">×</span></div>
+    <div class="actions">
+      <span class="reveal-btn">✳<span class="hint">Reveal current session</span></span>
+      <span>⊞</span><span>···</span>
+    </div>
+  </div>
+  <div class="main">
+    <div class="sidebar">
+      <div class="shead"><span class="sp">✳</span> CLAUDE SESSIONS</div>
+      <div class="f"><span class="ic">📁</span>claude-sessions-viewer<span class="n">8</span></div>
+      <div class="s sel">Add Claude session launc…<span class="meta"><span class="live">●</span> 2e0cc0a3 · now</span></div>
+      <div class="s">Review session extension…<span class="meta">458db7ab · 3h</span></div>
+      <div class="f"><span class="ic">📁</span>hermes<span class="n">14</span></div>
+      <div class="s">Integrate Mistral API fo…<span class="meta">7fd044bf · 26d</span></div>
+      <div class="f"><span class="ic">📁</span>reddit-parse-benchmark<span class="n">5</span></div>
+      <div class="s">Review Reddit dataset fi…<span class="meta">ad6c06bf · 3d</span></div>
+    </div>
+    <div class="paneL">
+      <div class="ph">Claude Code — your running session (official panel)</div>
+      <div class="body">…the conversation you're having right now…</div>
+      <div class="inp">Reply to Claude…</div>
+    </div>
+    <div class="paneR">
+      <div class="vhead">
+        <div class="vrow"><span style="color:var(--accent)">✳</span><span class="title">Add Claude session launcher to VS Code folder context menu</span>
+          <span class="i play">▶</span><span class="i">⧉</span><span class="i">⬇</span><span class="i">{ }</span><span class="i">⚙</span><span class="i">⌄</span></div>
+        <div class="dates">created 05 Jul 2026 09:59 → last message just now · <b>live</b></div>
+      </div>
+      <div class="chat">
+        <div class="msg u"><div class="who">USER</div>Okay, so update about that with screenshots, push it to my GitHub…</div>
+        <div class="msg a"><div class="who">CLAUDE</div>Plan: add a screenshot of the new reveal flow, write a proper CHANGELOG, update the README, push, and report.</div>
+        <div class="msg u"><div class="who">USER</div>ok go</div>
+        <div class="msg a"><div class="who">CLAUDE</div>v1.4.0 is shipped and installed — reload the window to activate it. The viewer updates live while the session continues.</div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
