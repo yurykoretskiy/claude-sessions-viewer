@@ -393,7 +393,7 @@ function activate(context) {
     vscode.commands.registerCommand('claudeSessions.refresh', () => provider.refresh()),
 
     vscode.commands.registerCommand('claudeSessions.openSettings', () =>
-      vscode.commands.executeCommand('workbench.action.openSettings', '@ext:yury.claude-sessions-viewer')
+      vscode.commands.executeCommand('workbench.action.openSettings', '@ext:yurykoretskiy.claude-sessions-viewer')
     ),
 
     vscode.commands.registerCommand('claudeSessions.toggleGrouping', () => provider.toggleGrouping()),

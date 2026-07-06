@@ -2,8 +2,8 @@
   "name": "claude-sessions-viewer",
   "displayName": "Claude Sessions Viewer",
   "description": "Browse Claude Code sessions grouped by project folder; right-click any folder to start a Claude session there.",
-  "version": "1.5.1",
-  "publisher": "yury",
+  "version": "1.6.0",
+  "publisher": "yurykoretskiy",
   "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"

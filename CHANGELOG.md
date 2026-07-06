@@ -6,6 +6,18 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.6.0] — 2026-07-06
+
+### Changed
+- **Publisher id is now `yurykoretskiy`** (was `yury`), matching the GitHub
+  handle so the extension id is `yurykoretskiy.claude-sessions-viewer`. This is
+  a one-time reinstall under the new id; locally-stored custom titles and the
+  grouping-mode toggle reset once.
+- **Unified activity-bar icon**: the left-rail icon is now the same filled
+  four-point spark as the Marketplace tile (monochrome, so VS Code themes it
+  white when active / gray when idle), replacing the outlined spark-with-lines.
+  The reveal/status buttons keep the matching `$(sparkle)` codicon.
+
 ## [1.5.1] — 2026-07-06
 
 ### Changed

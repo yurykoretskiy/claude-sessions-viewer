@@ -6,6 +6,7 @@ cd "$(dirname "$0")"
 
 VERSION=$(node -p "require('./package.json').version")
 NAME=$(node -p "require('./package.json').name")
+PUBLISHER=$(node -p "require('./package.json').publisher")
 OUT="${NAME}-${VERSION}.vsix"
 STAGE=$(mktemp -d)
 
@@ -18,7 +19,7 @@ cat > "$STAGE/extension.vsixmanifest" <<EOF
 <?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011">
   <Metadata>
-    <Identity Language="en-US" Id="${NAME}" Version="${VERSION}" Publisher="yury"/>
+    <Identity Language="en-US" Id="${NAME}" Version="${VERSION}" Publisher="${PUBLISHER}"/>
     <DisplayName>Claude Sessions Viewer</DisplayName>
     <Description xml:space="preserve">Browse Claude Code sessions grouped by project folder.</Description>
     <Categories>Other</Categories>
