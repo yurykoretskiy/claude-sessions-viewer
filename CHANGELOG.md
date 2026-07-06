@@ -6,6 +6,14 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.7.3] — 2026-07-06
+
+### Changed
+- The reveal button on the Claude panel tab now uses the terracotta 8-ray
+  Claude asterisk (`reveal-spark.svg`) instead of the generic `$(sparkle)`
+  codicon, matching the new icon set. The status-bar reveal keeps the codicon
+  (the status bar API only renders codicons).
+
 ## [1.7.2] — 2026-07-06
 
 ### Changed

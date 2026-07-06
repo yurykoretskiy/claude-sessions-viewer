@@ -2,7 +2,7 @@
   "name": "claude-sessions-viewer",
   "displayName": "Claude Sessions Viewer",
   "description": "Browse Claude Code sessions grouped by project folder; right-click any folder to start a Claude session there.",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "publisher": "yurykoretskiy",
   "license": "MIT",
   "engines": {
@@ -38,7 +38,10 @@
       {
         "command": "claudeSessions.revealCurrent",
         "title": "Claude Sessions: Reveal current session",
-        "icon": "$(sparkle)"
+        "icon": {
+          "light": "assets/reveal-spark.svg",
+          "dark": "assets/reveal-spark.svg"
+        }
       },
       {
         "command": "claudeSessions.newHere",
