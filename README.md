@@ -3,7 +3,7 @@
 **Every Claude Code session on your machine — organized by project folder,
 readable like a chat, one click away. A VS Code extension.**
 
-![Claude Sessions Viewer](assets/screenshots/hero-dark.png)
+![Claude Sessions Viewer](https://raw.githubusercontent.com/yurykoretskiy/claude-sessions-viewer/master/assets/screenshots/hero-dark.png)
 
 Claude Code stores every conversation on disk, but gives you no way to see
 them across projects — sessions pile up, get misfiled under the workspace
@@ -14,10 +14,10 @@ into a browsable map.
 
 - **Sessions by folder** — activity-bar tree of all local sessions: title,
   id, age. Folders sorted by recent activity.
-- **Working-folder grouping** — sessions started at the workspace root can be
-  re-filed under the folder they actually worked in (marked `≈`), by
-  analyzing which paths the session touched. Toggle to Claude's raw storage
-  anytime.
+- **Working-folder grouping** — sessions are grouped by the real folder they
+  ran in (the transcript's recorded `cwd`): your current project's sessions
+  under the project name, everything else under its own path. Toggle to
+  Claude's raw storage anytime.
 - **Conversation viewer** — click a session and read it like a chat: your
   messages right, Claude's left, tool noise hidden (optional markers),
   opens at the last message. Read-only until you press the accent resume
@@ -41,11 +41,11 @@ into a browsable map.
 
 **Reveal the session you're in right now** — ✳ on the panel tab → highlighted in the tree:
 
-![Reveal current session](assets/screenshots/reveal-current.png)
+![Reveal current session](https://raw.githubusercontent.com/yurykoretskiy/claude-sessions-viewer/master/assets/screenshots/reveal-current.png)
 
 | Light theme | Copy-clean plain flow | Filter: your messages |
 | --- | --- | --- |
-| ![Light](assets/screenshots/viewer-light.png) | ![Plain](assets/screenshots/plain-mode.png) | ![Filter](assets/screenshots/filter-user.png) |
+| ![Light](https://raw.githubusercontent.com/yurykoretskiy/claude-sessions-viewer/master/assets/screenshots/viewer-light.png) | ![Plain](https://raw.githubusercontent.com/yurykoretskiy/claude-sessions-viewer/master/assets/screenshots/plain-mode.png) | ![Filter](https://raw.githubusercontent.com/yurykoretskiy/claude-sessions-viewer/master/assets/screenshots/filter-user.png) |
 
 ## Install
 

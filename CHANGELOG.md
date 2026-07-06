@@ -6,6 +6,20 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.7.2] — 2026-07-06
+
+### Changed
+- **New Claude-style icon set**: 8-ray terracotta asterisk (reads as Claude
+  Code first). Color Marketplace tile with a small terminal cue
+  (`extension-icon.svg` → `icon.png`), matching monochrome activity-bar
+  `icon.svg`, and `favicon.svg`/`favicon-32.png` for web use.
+- README screenshots now use absolute GitHub URLs so they render on the
+  installed-extension page and the Marketplace, not only on GitHub.
+
+### Fixed
+- README no longer describes the removed content re-attribution (`≈`)
+  behavior; the grouping section matches v1.7.1 reality.
+
 ## [1.7.1] — 2026-07-06
 
 ### Fixed
