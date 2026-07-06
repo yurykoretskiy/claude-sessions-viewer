@@ -1,41 +1,88 @@
-# Claude Sessions
+# Claude Sessions Viewer
 
-VS Code extension. Every Claude Code session on your machine, organized by
-project folder, one click away.
+**Every Claude Code session on your machine — organized by project folder,
+readable like a chat, one click away. A VS Code extension.**
 
-## What it does
+![Claude Sessions Viewer](assets/screenshots/hero-dark.png)
 
-- **Sessions by folder** — activity-bar tree of all local Claude Code
-  sessions: title, session id, age, your prompts inside each session.
-- **Smart attribution** — sessions started at the workspace root are filed
-  under the folder they actually worked in (marked `≈`). Toggle to Claude's
-  raw index anytime; the title bar always shows the active mode.
-- **Search** — 🔍 in the view title: fuzzy match across titles, prompts,
-  folders, ids. Enter resumes the session.
-- **Launchers** — right-click any folder: *New session here* (terminal) or
-  *New window session here* (official Claude panel, new window).
-- **Resume is explicit** — click previews (expands prompts); the ▶ button
-  or context menu resumes in a terminal at the correct directory.
+Claude Code stores every conversation on disk, but gives you no way to see
+them across projects — sessions pile up, get misfiled under the workspace
+root, and auto-delete after 30 days. This extension turns that hidden pile
+into a browsable map.
+
+## Features
+
+- **Sessions by folder** — activity-bar tree of all local sessions: title,
+  id, age. Folders sorted by recent activity.
+- **Smart attribution** — sessions started at the workspace root are
+  re-filed under the folder they actually worked in (marked `≈`), by
+  analyzing which paths the session touched. Toggle to Claude's raw index
+  anytime.
+- **Conversation viewer** — click a session and read it like a chat: your
+  messages right, Claude's left, tool noise hidden (optional markers),
+  opens at the last message. Read-only — nothing runs on click.
+- **Filters & modes** — All / you / Claude; chat bubbles or plain
+  copy-clean flow; names on/off for sharing; one-click copy of the entire
+  conversation; export to Markdown (drop straight into an Obsidian vault).
+- **Launchers** — right-click any folder in the Explorer: *New session
+  here* (terminal) or *New window session here* (official Claude Code
+  panel). Resume any session in a terminal at its original directory.
+- **Search** — fuzzy match across titles, prompts, folders, ids.
 - **Rename** — give untitled sessions a custom name (stored locally).
+
+| Light theme | Copy-clean plain flow | Filter: your messages |
+| --- | --- | --- |
+| ![Light](assets/screenshots/viewer-light.png) | ![Plain](assets/screenshots/plain-mode.png) | ![Filter](assets/screenshots/filter-user.png) |
 
 ## Install
 
+Grab the `.vsix` from [Releases](https://github.com/yurykoretskiy/claude-sessions-viewer/releases), then:
+
 ```bash
-./build-vsix.sh --install   # requires the `code` CLI; then reload the window
+code --install-extension claude-sessions-viewer-1.3.0.vsix
 ```
 
-Or install a prebuilt `claude-sessions-viewer-<version>.vsix`:
-`code --install-extension claude-sessions-viewer-<version>.vsix`
+Reload the window. A ✳ icon appears in the activity bar.
+
+Or build from source (no toolchain needed — plain JavaScript):
+
+```bash
+git clone https://github.com/yurykoretskiy/claude-sessions-viewer
+cd claude-sessions-viewer && ./build-vsix.sh --install
+```
+
+## First run
+
+On activation the extension indexes `~/.claude/projects` (your existing
+Claude Code sessions — nothing to configure). Indexing streams each
+transcript once and caches results, so the first load takes a few seconds
+per few hundred sessions and is instant afterwards; only changed files are
+re-read. The tree refreshes itself when sessions change, or hit ⟳.
+Conversations are parsed lazily — only when you open one.
+
+## Privacy & how it works
+
+Everything is local. The extension reads Claude Code's own session files
+(`~/.claude/projects/*/*.jsonl`), writes nothing to them, and makes no
+network requests of any kind. No telemetry.
+
+Tip: Claude Code deletes transcripts after 30 days by default. Add
+`"cleanupPeriodDays": 365` to `~/.claude/settings.json` to keep a year.
 
 ## Requirements
 
-macOS/Linux, VS Code ≥ 1.85, Claude Code CLI (`claude`) on PATH,
-sessions in `~/.claude/projects` (the default).
+- VS Code ≥ 1.85
+- [Claude Code](https://claude.com/claude-code) CLI (`claude`) on PATH —
+  only needed for the resume/new-session buttons; browsing works without it
+- macOS/Linux
 
-## Share
+## For AI agents
 
-Send the folder (or the `.vsix` alone). Receiver runs the install command
-above. No marketplace, no account, no telemetry — everything stays local.
+Working on this repo with Claude Code, Codex, or similar? Read
+[AGENTS.md](AGENTS.md) — file map, build/deploy contract, and the invariants
+that must not be broken. Deferred ideas live in [BACKLOG.md](BACKLOG.md);
+maintainer's working notes in `docs/`, `findings/`, `inputs/`, `handoffs/`.
 
-*Docs for AI agents working on this repo: see [AGENTS.md](AGENTS.md).
-Deferred ideas: [BACKLOG.md](BACKLOG.md).*
+## License
+
+[MIT](LICENSE)

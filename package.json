@@ -182,5 +182,10 @@
         }
       }
     }
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yurykoretskiy/claude-sessions-viewer.git"
+  },
+  "homepage": "https://github.com/yurykoretskiy/claude-sessions-viewer#readme"
 }
