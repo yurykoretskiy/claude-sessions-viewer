@@ -549,6 +549,13 @@ function activate(context) {
 
     vscode.commands.registerCommand('claudeSessions.resume', (node) => {
       const s = node.session;
+      // The id becomes part of a shell command; only ever pass a strict UUID
+      // through (ids come from filenames, which an attacker could craft in a
+      // shared session pack).
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s.id)) {
+        vscode.window.showErrorMessage('Claude Sessions: refusing to resume — session id is not a valid UUID.');
+        return;
+      }
       // Resume must run from the session's original cwd so `claude --resume` finds it.
       openClaudeTerminal(s.cwd, `claude · ${node.group.label}`, `claude --resume ${s.id}`);
     }),

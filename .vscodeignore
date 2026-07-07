@@ -1,11 +1,13 @@
 # Keep the Marketplace package to product only — exclude private working
 # notes, dev scaffolding, and build artifacts.
 .git/**
+.github/**
 .gitignore
 .vscode/**
 build-vsix.sh
 *.vsix
 node_modules/**
+test/**
 
 # Private working notes / ledger (must NOT ship to the Marketplace)
 findings/**
@@ -26,3 +28,4 @@ assets/icon-preview.html
 assets/extension-icon.svg
 assets/favicon.svg
 assets/favicon-32.png
+SECURITY-STRATEGY.md

@@ -1,0 +1,25 @@
+# CI: syntax checks + the read-only safety guarantee.
+# Note there is no `npm install` step — this extension has zero dependencies,
+# so CI runs the same files that ship in the .vsix.
+name: CI
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax check every shipped module
+        run: |
+          node --check extension.js
+          node --check viewer.js
+          node --check indexer.js
+          node --check conversation.js
+      - name: Tests (includes the read-only safety guarantee)
+        run: npm test

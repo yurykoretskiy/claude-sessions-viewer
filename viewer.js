@@ -107,6 +107,13 @@ class ConversationViewer {
     });
     switch (msg.type) {
       case 'resume': {
+        // The id becomes part of a shell command; only ever pass a strict
+        // UUID through (ids come from filenames, which an attacker could
+        // craft in a shared session pack).
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session.id)) {
+          vscode.window.showErrorMessage('Claude Sessions: refusing to resume — session id is not a valid UUID.');
+          break;
+        }
         const terminal = vscode.window.createTerminal({ name: `claude · ${folder}`, cwd: session.cwd });
         terminal.show();
         terminal.sendText(`claude --resume ${session.id}`, true);

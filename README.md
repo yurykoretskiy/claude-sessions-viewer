@@ -67,6 +67,46 @@ into a browsable map.
   from disk at that moment, and the review pane live-updates while the
   session keeps writing.
 
+## Security & privacy — a viewer, not a manager
+
+Your Claude Code sessions are private data: months of your prompts, your
+code, your thinking. Pointing any extension at them is an act of trust, so
+this project is built around one rule and makes it checkable rather than
+asking you to believe it:
+
+**This extension never writes inside `~/.claude`. It only reads.**
+
+- **Machine-checked, not promised.** The test suite patches every mutating
+  filesystem API, runs the full indexing and viewing pipeline, and fails CI
+  if anything ever writes inside `~/.claude` — it also verifies transcript
+  bytes are untouched. Every push runs it.
+- **Everything it does write, listed.** Its own index cache and window notes
+  go to VS Code's extension storage; your custom session titles go to VS Code
+  settings storage; Markdown exports go to a file *you* pick in a save
+  dialog. That is the complete list.
+- **No network, no telemetry.** There is not a single network call in the
+  code. The viewer's webview runs under a `default-src 'none'` content
+  security policy, so even the page rendering your conversations has no way
+  to load or send anything.
+- **Auditable in minutes.** Zero dependencies, four plain unminified
+  JavaScript files — the package you install is the source you can read.
+  One search over the code confirms every claim above.
+- **One explicit action boundary.** The only thing that can ever change a
+  session is Claude Code itself, when *you* press resume — and that runs the
+  official `claude` CLI in a terminal you can see. Session ids are validated
+  as strict UUIDs before they touch a command line.
+
+Some choices explained, because they were deliberate:
+
+- **Custom titles live in VS Code storage, not in your transcripts.** Writing
+  titles into the `.jsonl` files would make them portable — and would mean
+  modifying Anthropic's session files, risking a broken resume. Not worth it.
+- **There is no delete, cleanup, or bulk management.** Managing sessions
+  means write access to your history; one bug away from destroying it. This
+  extension stays a viewer so that it structurally *cannot* be that bug.
+- **There is no "skip permissions" resume.** Convenience isn't worth
+  normalizing a dangerous flag.
+
 ## Install
 
 Grab the `.vsix` from [Releases](https://github.com/yurykoretskiy/claude-sessions-viewer/releases), then:

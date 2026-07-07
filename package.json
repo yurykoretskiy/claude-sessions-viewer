@@ -2,7 +2,7 @@
   "name": "claude-sessions-viewer",
   "displayName": "Claude Sessions Viewer",
   "description": "Browse Claude Code sessions grouped by project folder; right-click any folder to start a Claude session there.",
-  "version": "1.8.5",
+  "version": "1.8.6",
   "publisher": "yurykoretskiy",
   "license": "MIT",
   "engines": {
@@ -13,6 +13,19 @@
     "Visualization"
   ],
   "main": "./extension.js",
+  "scripts": {
+    "test": "node --test"
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Browsing and reading sessions works in untrusted workspaces. Starting or resuming a session opens a visible terminal, so those actions are best used in trusted workspaces."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "Reads Claude Code session files from the local disk (~/.claude), which is unavailable in virtual workspaces."
+    }
+  },
   "activationEvents": [
     "onStartupFinished"
   ],

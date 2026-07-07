@@ -6,6 +6,25 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.8.6] — 2026-07-07
+
+### Added
+- **CI-enforced read-only guarantee**: a test suite (`npm test`, zero
+  dependencies, run by GitHub Actions on every push) patches every mutating
+  filesystem API, runs the full indexing and conversation-extraction
+  pipeline, and fails the build if anything ever writes inside `~/.claude`.
+  Also verifies transcript bytes are untouched and that concurrent opens
+  create exactly one panel.
+- Workspace trust declarations in the manifest (`untrustedWorkspaces`:
+  limited — reading works everywhere, resume prefers trusted;
+  `virtualWorkspaces`: false — sessions live on the local disk).
+
+### Fixed
+- **Resume now validates the session id as a strict UUID** before it is used
+  in a terminal command (ids come from filenames; a crafted filename in a
+  shared session folder could otherwise inject shell commands). Applies to
+  both the tree context menu and the viewer's resume button.
+
 ## [1.8.5] — 2026-07-07
 
 ### Fixed
