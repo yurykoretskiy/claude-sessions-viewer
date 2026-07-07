@@ -33,6 +33,20 @@ function normalizeTitleForMatch(s) {
     .toLowerCase();
 }
 
+// Two different projects can share a folder basename (e.g. two "backend"
+// checkouts). Mark groups whose label is ambiguous so the tree can show the
+// parent folder as a tiebreaker, without reverting to full paths everywhere.
+function markLabelCollisions(groups) {
+  const pathsByLabel = new Map();
+  for (const g of groups) {
+    if (!pathsByLabel.has(g.label)) pathsByLabel.set(g.label, new Set());
+    pathsByLabel.get(g.label).add(g.folderPath);
+  }
+  for (const g of groups) {
+    g.labelCollision = pathsByLabel.get(g.label).size > 1;
+  }
+}
+
 function titleMatchScore(activeTitle, candidateTitle) {
   const active = normalizeTitleForMatch(activeTitle);
   const candidate = normalizeTitleForMatch(candidateTitle);
@@ -63,6 +77,7 @@ class SessionTreeProvider {
 
   async toggleGrouping() {
     const sessionId = this.selectedSessionId;
+    if (sessionId) this.context.globalState.update('selectedSessionId', sessionId);
     this.treeMode = this.treeMode === 'folders' ? 'chronological' : 'folders';
     this.context.globalState.update('treeMode', this.treeMode);
     this.updateModeUi();
@@ -91,6 +106,14 @@ class SessionTreeProvider {
     if (!node || node.kind !== 'session' || !node.session || !node.session.id) return;
     this.selectedSessionId = node.session.id;
     this.context.globalState.update('selectedSessionId', node.session.id);
+  }
+
+  // Plain tree clicks fire onDidChangeSelection constantly while browsing;
+  // track the selection in memory only there. It gets flushed to disk by
+  // rememberSession() (open/reveal command paths) or toggleGrouping().
+  setSelectionInMemory(node) {
+    if (!node || node.kind !== 'session' || !node.session || !node.session.id) return;
+    this.selectedSessionId = node.session.id;
   }
 
   async revealSessionById(sessionId, opts = {}) {
@@ -145,6 +168,13 @@ class SessionTreeProvider {
     this._onDidChangeTreeData.fire();
   }
 
+  // Like refresh(), but returns the re-index promise so callers can await the
+  // tree fully settling before touching tree nodes (e.g. view.reveal).
+  refreshAndLoad() {
+    this.refresh();
+    return this.ensureLoaded();
+  }
+
   loadingNode() {
     return { kind: 'loading' };
   }
@@ -192,6 +222,7 @@ class SessionTreeProvider {
       g.latest = g.sessions[0] ? g.sessions[0].lastTs || '' : '';
     }
     groups.sort((a, b) => a.label.localeCompare(b.label) || a.folderPath.localeCompare(b.folderPath));
+    markLabelCollisions(groups);
     return groups;
   }
 
@@ -210,13 +241,14 @@ class SessionTreeProvider {
         continue;
       }
       groups.push({
-        id: `t:${groups.length}:${entry.folder.folderPath}:${entry.session.id}`,
+        id: `t:${entry.folder.folderPath}:${entry.session.id}`,
         label: entry.folder.label,
         folderPath: entry.folder.folderPath,
         latest: entry.session.lastTs || '',
         sessions: [entry.session],
       });
     }
+    markLabelCollisions(groups);
     return groups;
   }
 
@@ -346,14 +378,13 @@ class SessionTreeProvider {
       } catch {
         exists = false;
       }
-      item.description =
-        this.treeMode === 'chronological'
-          ? exists
-            ? ''
-            : 'gone'
-          : exists
-            ? `${g.sessions.length}`
-            : `${g.sessions.length} · gone`;
+      // Two projects can share a folder basename; disambiguate only the
+      // colliding groups with their shortened parent path.
+      const parentHint = g.labelCollision ? shortHome(path.dirname(g.folderPath)) : '';
+      const countPart =
+        this.treeMode === 'chronological' ? '' : `${g.sessions.length}`;
+      const statusPart = exists ? '' : 'gone';
+      item.description = [parentHint, countPart, statusPart].filter(Boolean).join(' · ');
       item.iconPath = vscode.Uri.joinPath(this.context.extensionUri, 'assets', 'folder-spark.svg');
       item.contextValue = 'folder';
       item.tooltip = exists
@@ -450,7 +481,7 @@ function activate(context) {
   context.subscriptions.push(
     view.onDidChangeSelection((e) => {
       const node = e.selection && e.selection[0];
-      provider.rememberSession(node);
+      provider.setSelectionInMemory(node);
     })
   );
 
@@ -531,8 +562,7 @@ function activate(context) {
       }
       // "Current session" = the transcript being actively written (newest
       // mtime). Fresh index first so mtimes are current.
-      provider.refresh();
-      await provider.ensureLoaded();
+      await provider.refreshAndLoad();
       const all = provider.allSessions();
       if (!all.length) {
         vscode.window.showInformationMessage('Claude Sessions: no sessions found');
@@ -559,9 +589,11 @@ function activate(context) {
       }
       try {
         await vscode.commands.executeCommand('workbench.view.extension.claudeSessions');
-        await view.reveal(node, { select: true, expand: false, focus: false });
+        await view.reveal(node, { select: true, expand: true, focus: false });
         provider.rememberSession(node);
-      } catch {}
+      } catch (e) {
+        vscode.window.showWarningMessage('Claude Sessions: could not reveal — ' + e.message);
+      }
       if (provider.config.revealOpenConversation) {
         await viewer.open(node.session, provider.displayTitle(node.session), node.group.label, {
           beside: true,

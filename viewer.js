@@ -28,6 +28,7 @@ class ConversationViewer {
   constructor(context) {
     this.context = context;
     this.panels = new Map(); // sessionId -> {panel, convo, session, title, folder}
+    this.opening = new Map(); // sessionId -> in-flight open() promise
   }
 
   get config() {
@@ -39,51 +40,59 @@ class ConversationViewer {
     };
   }
 
-  async open(session, title, folderLabel, opts = {}) {
+  open(session, title, folderLabel, opts = {}) {
     const existing = this.panels.get(session.id);
     if (existing) {
       existing.panel.reveal(opts.beside ? vscode.ViewColumn.Beside : undefined);
-      return;
+      return Promise.resolve();
     }
-    const convo = await extractConversation(session.file);
-    const panel = vscode.window.createWebviewPanel(
-      'claudeSessionsViewer.conversation',
-      `✳ ${title}`,
-      opts.beside ? vscode.ViewColumn.Beside : vscode.ViewColumn.One,
-      { enableScripts: true, retainContextWhenHidden: true }
-    );
-    const entry = { panel, convo, session, title, folder: folderLabel };
-    this.panels.set(session.id, entry);
+    const inFlight = this.opening.get(session.id);
+    if (inFlight) return inFlight;
 
-    const fsMod = require('fs');
-    let listener = null;
-    if (this.config.liveRefresh) {
-      // Optional live refresh: while the session keeps writing, re-extract
-      // and push updated messages into the webview.
-      let refreshing = false;
-      listener = async () => {
-        if (refreshing) return;
-        refreshing = true;
-        try {
-          entry.convo = await extractConversation(session.file);
-          panel.webview.postMessage({
-            type: 'update',
-            messages: entry.convo.messages,
-            firstTs: entry.convo.firstTs,
-            lastTs: entry.convo.lastTs,
-          });
-        } catch {}
-        refreshing = false;
-      };
-      fsMod.watchFile(session.file, { interval: 3000 }, listener);
-    }
+    const promise = (async () => {
+      const convo = await extractConversation(session.file);
+      const panel = vscode.window.createWebviewPanel(
+        'claudeSessionsViewer.conversation',
+        `✳ ${title}`,
+        opts.beside ? vscode.ViewColumn.Beside : vscode.ViewColumn.One,
+        { enableScripts: true, retainContextWhenHidden: true }
+      );
+      const entry = { panel, convo, session, title, folder: folderLabel };
+      this.panels.set(session.id, entry);
 
-    panel.onDidDispose(() => {
-      if (listener) fsMod.unwatchFile(session.file, listener);
-      this.panels.delete(session.id);
-    });
-    panel.webview.onDidReceiveMessage((msg) => this.onMessage(entry, msg));
-    panel.webview.html = this.html(entry);
+      const fsMod = require('fs');
+      let listener = null;
+      if (this.config.liveRefresh) {
+        // Optional live refresh: while the session keeps writing, re-extract
+        // and push updated messages into the webview.
+        let refreshing = false;
+        listener = async () => {
+          if (refreshing) return;
+          refreshing = true;
+          try {
+            entry.convo = await extractConversation(session.file);
+            panel.webview.postMessage({
+              type: 'update',
+              messages: entry.convo.messages,
+              firstTs: entry.convo.firstTs,
+              lastTs: entry.convo.lastTs,
+            });
+          } catch {}
+          refreshing = false;
+        };
+        fsMod.watchFile(session.file, { interval: 3000 }, listener);
+      }
+
+      panel.onDidDispose(() => {
+        if (listener) fsMod.unwatchFile(session.file, listener);
+        this.panels.delete(session.id);
+      });
+      panel.webview.onDidReceiveMessage((msg) => this.onMessage(entry, msg));
+      panel.webview.html = this.html(entry);
+    })();
+
+    this.opening.set(session.id, promise);
+    return promise.finally(() => this.opening.delete(session.id));
   }
 
   async onMessage(entry, msg) {

@@ -2,8 +2,10 @@
 # notes, dev scaffolding, and build artifacts.
 .git/**
 .gitignore
+.vscode/**
 build-vsix.sh
 *.vsix
+node_modules/**
 
 # Private working notes / ledger (must NOT ship to the Marketplace)
 findings/**
@@ -14,6 +16,13 @@ handoffs/**
 HANDOFF.md
 docs/**
 poc/**
+AGENTS.md
+BACKLOG.md
+SONNET-INSTRUCTIONS.md
 
 # Design sources kept in repo but not needed in the package
 assets/icon-source.html
+assets/icon-preview.html
+assets/extension-icon.svg
+assets/favicon.svg
+assets/favicon-32.png

@@ -6,6 +6,26 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.8.5] — 2026-07-07
+
+### Fixed
+- Double-clicking (or otherwise rapid-firing) a session row no longer opens
+  two identical conversation panels; concurrent opens for the same session
+  now share one in-flight extract.
+- `Reveal current session` now awaits the re-index fully before touching tree
+  nodes, expands the revealed folder, and surfaces a warning message instead
+  of silently swallowing reveal failures.
+
+### Changed
+- Folder rows with the same basename across different projects now show a
+  shortened parent path in the description (e.g. `~/yury-vibe-coding · 6`)
+  instead of being indistinguishable.
+- Chronological group ids no longer include a positional index, so refreshes
+  that reorder groups no longer reset their expansion state.
+- Session selection is now persisted to disk only when a conversation is
+  opened, revealed, or the grouping mode is toggled — plain tree clicks only
+  update the in-memory selection.
+
 ## [1.8.4] — 2026-07-06
 
 ### Fixed
