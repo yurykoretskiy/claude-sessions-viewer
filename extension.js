@@ -393,7 +393,7 @@ class SessionTreeProvider {
       return item;
     }
     if (element.kind === 'prompt') {
-      const item = new vscode.TreeItem('  ' + element.text, vscode.TreeItemCollapsibleState.None);
+      const item = new vscode.TreeItem(' ' + element.text, vscode.TreeItemCollapsibleState.None);
       item.iconPath = new vscode.ThemeIcon('arrow-small-right');
       item.tooltip = element.text;
       item.contextValue = 'prompt';
@@ -402,12 +402,12 @@ class SessionTreeProvider {
     }
     const s = element.session;
     const title = this.displayTitle(s);
-    const label =
-      this.treeMode === 'chronological' && s.lastTs
-        ? `  [${relativeAge(s.lastTs)}] ${title}`
-        : '  ' + title;
-    // Em-space padding: VS Code has no per-item indent API, and sessions at
-    // the default tree indent read as siblings of the folders.
+    // One line, no clutter: age once on the left, then the title gets all
+    // remaining width. Everything else (id, cwd, prompt) lives in the tooltip;
+    // the id is also on the context menu (Copy session id).
+    // Single em-space padding: VS Code has no per-item indent API, and
+    // sessions at the default tree indent read as siblings of the folders.
+    const label = ` ${s.lastTs ? `[${relativeAge(s.lastTs)}] ` : ''}${title}`;
     const item = new vscode.TreeItem(
       label,
       this.config.promptChildren && s.prompts && s.prompts.length
@@ -415,8 +415,8 @@ class SessionTreeProvider {
         : vscode.TreeItemCollapsibleState.None
     );
     item.id = 's:' + s.id;
-    const live = s.mtimeMs && Date.now() - s.mtimeMs < 5 * 60 * 1000 ? '● ' : '';
-    item.description = `${live}${s.id.slice(0, 8)} · ${relativeAge(s.lastTs)}`;
+    const live = s.mtimeMs && Date.now() - s.mtimeMs < 5 * 60 * 1000;
+    item.description = live ? '●' : '';
     // No icon on session rows — the space goes to the session title instead.
     item.contextValue = 'session';
     item.tooltip = new vscode.MarkdownString(
@@ -424,6 +424,7 @@ class SessionTreeProvider {
         `**${title}**`,
         '',
         `id: \`${s.id}\``,
+        `last message: ${relativeAge(s.lastTs) || '?'} ago`,
         `started in: \`${shortHome(s.cwd || '?')}\``,
         s.lastPrompt ? `last prompt: ${s.lastPrompt.slice(0, 200)}` : '',
       ].join('\n')
@@ -597,6 +598,15 @@ function activate(context) {
       try {
         await vscode.commands.executeCommand('workbench.view.extension.claudeSessions');
         await view.reveal(node, { select: true, expand: true, focus: false });
+        // Cold start after a window reload: reveal can land on a tree that is
+        // still materializing its first render and silently miss. Confirm the
+        // selection took; if not, give the tree a beat and reveal once more.
+        const selected = () =>
+          view.selection && view.selection.some((n) => n && n.session && n.session.id === node.session.id);
+        if (!selected()) {
+          await new Promise((r) => setTimeout(r, 350));
+          await view.reveal(node, { select: true, expand: true, focus: false });
+        }
         provider.rememberSession(node);
       } catch (e) {
         vscode.window.showWarningMessage('Claude Sessions: could not reveal — ' + e.message);

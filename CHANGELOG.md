@@ -6,6 +6,20 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.8.7] — 2026-07-07
+
+### Changed
+- **Clean session rows.** One format in both modes: `[age] Title` with the
+  age once on the left and the full remaining width for the title. The
+  right-side description now shows only the live `●` marker; the session id
+  and other details moved to the tooltip (id also stays on the context
+  menu → Copy session id). Left padding halved.
+
+### Fixed
+- **Reveal after a window reload no longer needs a second press.** Reveal now
+  confirms the tree selection actually took and retries once after a short
+  beat when the first attempt lands on a still-rendering tree.
+
 ## [1.8.6] — 2026-07-07
 
 ### Added
