@@ -2,7 +2,7 @@
   "name": "claude-sessions-viewer",
   "displayName": "Claude Sessions Viewer",
   "description": "Browse Claude Code sessions grouped by project folder; right-click any folder to start a Claude session there.",
-  "version": "1.8.7",
+  "version": "1.8.8",
   "publisher": "yurykoretskiy",
   "license": "MIT",
   "engines": {

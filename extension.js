@@ -218,8 +218,8 @@ class SessionTreeProvider {
     }
     const groups = [...map.values()];
     for (const g of groups) {
-      g.sessions.sort((a, b) => (b.lastTs || '').localeCompare(a.lastTs || ''));
-      g.latest = g.sessions[0] ? g.sessions[0].lastTs || '' : '';
+      g.sessions.sort((a, b) => (b.effTs || b.lastTs || '').localeCompare(a.effTs || a.lastTs || ''));
+      g.latest = g.sessions[0] ? g.sessions[0].effTs || g.sessions[0].lastTs || '' : '';
     }
     groups.sort((a, b) => a.label.localeCompare(b.label) || a.folderPath.localeCompare(b.folderPath));
     markLabelCollisions(groups);
@@ -232,7 +232,9 @@ class SessionTreeProvider {
       const attr = this.folderForSession(s, root);
       if (attr) entries.push({ session: s, folder: attr });
     }
-    entries.sort((a, b) => (b.session.lastTs || '').localeCompare(a.session.lastTs || ''));
+    entries.sort((a, b) =>
+      (b.session.effTs || b.session.lastTs || '').localeCompare(a.session.effTs || a.session.lastTs || '')
+    );
     const groups = [];
     for (const entry of entries) {
       const prev = groups[groups.length - 1];
@@ -244,7 +246,7 @@ class SessionTreeProvider {
         id: `t:${entry.folder.folderPath}:${entry.session.id}`,
         label: entry.folder.label,
         folderPath: entry.folder.folderPath,
-        latest: entry.session.lastTs || '',
+        latest: entry.session.effTs || entry.session.lastTs || '',
         sessions: [entry.session],
       });
     }
@@ -407,7 +409,8 @@ class SessionTreeProvider {
     // the id is also on the context menu (Copy session id).
     // Single em-space padding: VS Code has no per-item indent API, and
     // sessions at the default tree indent read as siblings of the folders.
-    const label = ` ${s.lastTs ? `[${relativeAge(s.lastTs)}] ` : ''}${title}`;
+    const ageTs = s.effTs || s.lastTs;
+    const label = ` ${ageTs ? `[${relativeAge(ageTs)}] ` : ''}${title}`;
     const item = new vscode.TreeItem(
       label,
       this.config.promptChildren && s.prompts && s.prompts.length
@@ -424,7 +427,7 @@ class SessionTreeProvider {
         `**${title}**`,
         '',
         `id: \`${s.id}\``,
-        `last message: ${relativeAge(s.lastTs) || '?'} ago`,
+        `last activity: ${relativeAge(s.effTs || s.lastTs) || '?'} ago (last message ${relativeAge(s.lastTs) || '?'} ago)`,
         `started in: \`${shortHome(s.cwd || '?')}\``,
         s.lastPrompt ? `last prompt: ${s.lastPrompt.slice(0, 200)}` : '',
       ].join('\n')

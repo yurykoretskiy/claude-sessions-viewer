@@ -6,6 +6,19 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.8.8] — 2026-07-07
+
+### Fixed
+- **Chronological order now follows real activity.** A session has two
+  clocks: the last timestamp inside the transcript and the file's mtime.
+  Claude Code appends metadata records without timestamps (ai-title,
+  last-prompt, mode), so the content clock can be hours stale while the file
+  is being written right now — such sessions showed `[6h]` with a live `●`
+  and sorted far down the list. Sorting and the `[age]` label now use the
+  newer of the two clocks — the same signal as the live marker, so age,
+  order, and liveness can never contradict each other. Guarded by a
+  regression test.
+
 ## [1.8.7] — 2026-07-07
 
 ### Changed

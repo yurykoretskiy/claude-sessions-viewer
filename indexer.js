@@ -141,6 +141,18 @@ function listSessionFiles() {
   return files;
 }
 
+// A session has two clocks: the last content timestamp inside the transcript
+// (lastTs) and the file's mtime. Claude Code appends metadata records without
+// timestamps (ai-title, last-prompt, mode) after the conversation, so lastTs
+// can go stale while the file is still being written. "Last activity" for
+// sorting/age is the NEWER of the two — the same signal the live ● marker
+// uses, so age, order, and liveness can never contradict each other.
+function effectiveTs(lastTs, mtimeMs) {
+  const content = lastTs ? Date.parse(lastTs) || 0 : 0;
+  const eff = Math.max(content, mtimeMs || 0);
+  return eff ? new Date(eff).toISOString() : '';
+}
+
 // Returns array of session metadata objects; onProgress(done, total) optional.
 async function indexAll(cacheFile, onProgress, options = {}) {
   const includePrompts = options.includePrompts !== false;
@@ -163,12 +175,14 @@ async function indexAll(cacheFile, onProgress, options = {}) {
     const cached = cache[file];
     if (cached && cached.v === cacheVersion && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
       cached.data.size = cached.size;
+      cached.data.effTs = effectiveTs(cached.data.lastTs, cached.mtimeMs);
       sessions.push(cached.data);
     } else {
       try {
         const data = await indexSessionFile(file, { includePrompts });
         data.mtimeMs = stat.mtimeMs;
         data.size = stat.size;
+        data.effTs = effectiveTs(data.lastTs, stat.mtimeMs);
         cache[file] = { v: cacheVersion, mtimeMs: stat.mtimeMs, size: stat.size, data };
         sessions.push(data);
         dirty = true;
@@ -188,4 +202,4 @@ async function indexAll(cacheFile, onProgress, options = {}) {
   return sessions;
 }
 
-module.exports = { indexAll, PROJECTS_DIR };
+module.exports = { indexAll, PROJECTS_DIR, effectiveTs };
