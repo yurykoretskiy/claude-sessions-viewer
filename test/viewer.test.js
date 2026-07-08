@@ -147,3 +147,23 @@ test('generated webview script is valid JavaScript', () => {
   assert.ok(script, 'webview script found');
   assert.doesNotThrow(() => new vm.Script(script[1]));
 });
+
+test('webview locks page scroll so header controls stay visible', () => {
+  const viewer = new ConversationViewer({});
+  const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };
+  const html = viewer.html({
+    session,
+    convo: {
+      firstTs: '2026-01-01T10:00:00Z',
+      lastTs: '2026-01-01T10:00:05Z',
+      messages: [{ role: 'user', text: 'hello', ts: '2026-01-01T10:00:00Z' }],
+    },
+    title: 'T',
+    folder: 'F',
+  });
+
+  assert.match(html, /html \{ height:100%; overflow:hidden; \}/);
+  assert.match(html, /body \{[^}]*height:100%; overflow:hidden;/);
+  assert.match(html, /\.viewer \{[^}]*height:100%; max-height:100%; overflow:hidden;/);
+  assert.match(html, /\.chat \{[^}]*overflow-y:auto;/);
+});

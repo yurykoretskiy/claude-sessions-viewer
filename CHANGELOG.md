@@ -6,6 +6,13 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.11.6] — 2026-07-08
+
+### Fixed
+- Locked the conversation webview page itself and kept scrolling inside the
+  transcript pane, so the title/actions/filters remain visible instead of the
+  widget drifting upward to a bare chat view.
+
 ## [1.11.5] — 2026-07-08
 
 ### Changed

@@ -220,6 +220,7 @@ class ConversationViewer {
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <style>
+  html { height:100%; overflow:hidden; }
   body { --agent-strong:#d97757; --user-strong:#4f9f62; margin:0; font:14px/1.48 -apple-system,'SF Pro Text','Segoe UI',sans-serif; }
   body.sys { --bg:var(--vscode-editor-background); --panel:var(--vscode-editor-background);
     --line:var(--vscode-panel-border,#3c3c3c); --fg:var(--vscode-foreground);
@@ -237,8 +238,8 @@ class ConversationViewer {
     --user-bub:#dff3d7; --agent-bub:#f3d6cc; --chip:#f1f1f1; --btn2:#e9e9e9; --sep:#bbb;
     --rail-track:rgba(115,108,138,.16); --rail-fill:#8c849d; --rail-thumb:#8c849d;
     --agent-strong:#c15f3c; --user-strong:#4f9f62; --code-bg:#282828; --code-fg:#eee; --mark:#ffe98f; }
-  body { background:var(--bg); color:var(--fg); display:flex; justify-content:center; height:100vh; }
-  .viewer { width:min(820px,100vw); height:100vh; background:var(--panel); border-left:1px solid var(--line); border-right:1px solid var(--line); display:flex; flex-direction:column; position:relative; }
+  body { background:var(--bg); color:var(--fg); display:flex; justify-content:center; height:100%; overflow:hidden; }
+  .viewer { width:min(820px,100vw); height:100%; max-height:100%; overflow:hidden; background:var(--panel); border-left:1px solid var(--line); border-right:1px solid var(--line); display:flex; flex-direction:column; position:relative; }
   .vhead { padding:10px 16px 8px; border-bottom:1px solid var(--line); background:color-mix(in srgb, var(--panel) 97%, transparent); flex-shrink:0; position:relative; z-index:8; }
   .vrow { display:flex; align-items:center; gap:10px; }
   .title { font-size:17px; font-weight:680; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
