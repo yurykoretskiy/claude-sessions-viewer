@@ -393,7 +393,12 @@ function escAttr(s) {
 }
 
 function isOpenableHref(href) {
-  return /^(https?:\/\/|mailto:|file:\/\/|~\/|\/|\\.\\.?\/)/i.test(href) || /^[A-Za-z0-9._-]+\\//.test(href);
+  const h = String(href || '');
+  const lower = h.toLowerCase();
+  if (lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('mailto:')) return true;
+  if (lower.startsWith('file://') || h.startsWith('~/') || h.startsWith('/') || h.startsWith('./') || h.startsWith('../')) return true;
+  const slash = h.indexOf('/');
+  return slash > 0 && /^[A-Za-z0-9._-]+$/.test(h.slice(0, slash));
 }
 
 function anchorHtml(label, href) {

@@ -6,6 +6,15 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.11.2] — 2026-07-08
+
+### Fixed
+- **Conversation viewer opens again.** The `1.11.1` link-rendering change
+  introduced an escaping-sensitive regex inside the generated webview script.
+  Node-side tests passed, but VS Code received invalid JavaScript and rendered
+  a blank webview. The link check now avoids that regex and the test suite now
+  syntax-checks the actual generated webview script.
+
 ## [1.11.1] — 2026-07-08
 
 ### Fixed

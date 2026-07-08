@@ -5,6 +5,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const Module = require('module');
+const vm = require('node:vm');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -100,4 +101,22 @@ test('openLink routes web links externally and local paths through VS Code', asy
   assert.strictEqual(lastOpenedExternal, null);
   assert.strictEqual(lastCommand.command, 'vscode.open');
   assert.strictEqual(lastCommand.uri.fsPath, path.join(tmp, 'notes', 'demo.md'));
+});
+
+test('generated webview script is valid JavaScript', () => {
+  const viewer = new ConversationViewer({});
+  const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };
+  const html = viewer.html({
+    session,
+    convo: {
+      firstTs: '2026-01-01T10:00:00Z',
+      lastTs: '2026-01-01T10:00:05Z',
+      messages: [{ role: 'user', text: 'hello https://example.com', ts: '2026-01-01T10:00:00Z' }],
+    },
+    title: 'T',
+    folder: 'F',
+  });
+  const script = html.match(/<script nonce="[^"]+">([\s\S]*)<\/script>/);
+  assert.ok(script, 'webview script found');
+  assert.doesNotThrow(() => new vm.Script(script[1]));
 });
