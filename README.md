@@ -24,8 +24,9 @@ resume buttons. It reads `~/.claude`; it does not edit or delete transcripts.
   edge, names visible by default, tool noise hidden, and the viewer opens at
   the last message.
 - **Fast review controls** — All / you / Claude filters, collapsible long
-  messages, inside-session search, Markdown/code/table rendering, copy raw
-  session path, copy conversation, and export to Markdown.
+  messages, inside-session search, clickable links, image attachment markers,
+  Markdown/code/table rendering, copy raw session path, copy conversation, and
+  export to Markdown.
 - **Launchers** — right-click any folder in the Explorer: *New session
   here* (terminal) or *New window session here* (official Claude Code
   panel). Resume stays explicit inside the review pane.

@@ -9,19 +9,53 @@ const readline = require('readline');
 
 const MSG_CHAR_CAP = 8000; // stored per message; the webview display-caps lower
 
+function commandTextFromMarkup(text) {
+  const source = String(text || '');
+  const named = source.match(/<command-name>\s*([^<]+?)\s*<\/command-name>/);
+  if (named && named[1].trim()) return named[1].trim();
+  const message = source.match(/<command-message>\s*([^<]+?)\s*<\/command-message>/);
+  if (message && message[1].trim()) {
+    const value = message[1].trim();
+    return value.startsWith('/') ? value : `/${value}`;
+  }
+  return '';
+}
+
+function attachmentLabel(attachments) {
+  if (!attachments.length) return '';
+  const imageCount = attachments.filter((a) => a.kind === 'image').length;
+  const documentCount = attachments.filter((a) => a.kind === 'document').length;
+  const parts = [];
+  if (imageCount) {
+    const mediaTypes = [...new Set(attachments.filter((a) => a.kind === 'image').map((a) => a.media).filter(Boolean))];
+    parts.push(`image attachment x${imageCount}${mediaTypes.length ? ` (${mediaTypes.join(', ')})` : ''}`);
+  }
+  if (documentCount) parts.push(`document attachment x${documentCount}`);
+  return `[${parts.join(' · ')}]`;
+}
+
 function textFromContent(content) {
   // Returns { text, tools: [names…] }
-  if (typeof content === 'string') return { text: content, tools: [] };
+  if (typeof content === 'string') {
+    const commandText = commandTextFromMarkup(content);
+    if (commandText) return { text: commandText, tools: [] };
+    return { text: content.startsWith('<') ? '' : content, tools: [] };
+  }
   if (!Array.isArray(content)) return { text: '', tools: [] };
   const parts = [];
   const tools = [];
+  const attachments = [];
   for (const block of content) {
     if (!block || typeof block !== 'object') continue;
     if (block.type === 'text' && block.text) parts.push(block.text);
     else if (block.type === 'tool_use') tools.push(block.name || 'tool');
     else if (block.type === 'tool_result') tools.push('tool result');
-    // thinking / images / documents: dropped
+    else if (block.type === 'image') attachments.push({ kind: 'image', media: block.source && block.source.media_type });
+    else if (block.type === 'document') attachments.push({ kind: 'document' });
+    // thinking / other non-readable blocks: dropped
   }
+  const attachment = attachmentLabel(attachments);
+  if (attachment) parts.unshift(attachment);
   return { text: parts.join('\n').trim(), tools };
 }
 
@@ -71,7 +105,7 @@ async function extractConversation(jsonlPath) {
     const { text, tools } = textFromContent(obj.message.content);
     pendingTools.push(...tools);
 
-    if (text && !text.startsWith('<')) {
+    if (text) {
       flushTools(ts);
       const role = obj.type === 'user' ? 'user' : 'assistant';
       const capped = text.length > MSG_CHAR_CAP ? text.slice(0, MSG_CHAR_CAP) + ' …[truncated]' : text;

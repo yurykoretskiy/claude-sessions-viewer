@@ -6,6 +6,24 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.11.1] — 2026-07-08
+
+### Fixed
+- **Slash command inputs now render as user messages.** Claude stores commands
+  such as `/checkpoint` as command markup in the transcript; the conversation
+  extractor now preserves the command while still hiding internal meta blocks.
+- **Links are clickable in the conversation viewer.** Markdown links and bare
+  `http(s)`, `file://`, and local/relative paths now open through VS Code
+  instead of staying inert text.
+- **Image attachments are visible in user bubbles.** When a user message
+  contains image blocks, the viewer now shows an attachment marker before the
+  text so screenshots are not silently invisible.
+
+### Changed
+- Softened the user and Claude bubble backgrounds. Role color now comes mostly
+  from the side stripes; Claude bubbles use a neutral cloud-gray fill instead
+  of a pink/coral fill.
+
 ## [1.11.0] — 2026-07-08
 
 ### Added

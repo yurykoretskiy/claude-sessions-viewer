@@ -4,6 +4,7 @@
 const vscode = require('vscode');
 const path = require('path');
 const os = require('os');
+const { fileURLToPath } = require('url');
 const { extractConversation, conversationToText } = require('./conversation');
 
 const RENDER_WINDOW = 200; // big sessions: render latest N first, "render all" banner
@@ -144,6 +145,27 @@ class ConversationViewer {
       case 'reveal':
         await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(session.file));
         break;
+      case 'openLink': {
+        const href = String(msg.href || '').trim();
+        if (!href) break;
+        try {
+          if (/^(https?:\/\/|mailto:)/i.test(href)) {
+            await vscode.env.openExternal(vscode.Uri.parse(href));
+          } else if (/^file:\/\//i.test(href)) {
+            await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(fileURLToPath(href)));
+          } else {
+            const expanded = href.startsWith('~/')
+              ? path.join(os.homedir(), href.slice(2))
+              : path.isAbsolute(href)
+                ? href
+                : path.resolve(session.cwd || path.dirname(session.file), href);
+            await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(expanded));
+          }
+        } catch (e) {
+          vscode.window.showErrorMessage(`Claude Sessions: could not open link — ${e.message}`);
+        }
+        break;
+      }
       case 'setConfig': {
         const c = vscode.workspace.getConfiguration('claudeSessionsViewer');
         if (msg.theme) await c.update('theme', msg.theme, vscode.ConfigurationTarget.Global);
@@ -186,14 +208,14 @@ class ConversationViewer {
     --line:var(--vscode-panel-border,#3c3c3c); --fg:var(--vscode-foreground);
     --mut:var(--vscode-descriptionForeground,#8a8a8a); --chip:var(--vscode-badge-background,#333);
     --btn2:var(--vscode-button-secondaryBackground,#3a3d41); --sep:#5a5a5a;
-    --user-bub:color-mix(in srgb, #dff3d7 76%, var(--vscode-editor-background));
-    --agent-bub:color-mix(in srgb, #f3d6cc 60%, var(--vscode-editor-background));
+    --user-bub:color-mix(in srgb, #dff3d7 22%, var(--vscode-editor-background));
+    --agent-bub:color-mix(in srgb, #eef1f3 36%, var(--vscode-editor-background));
     --code-bg:#282828; --code-fg:#eee; --mark:#ffe98f; }
   body.dark { --bg:#1e1e1e; --panel:#252526; --line:#3c3c3c; --fg:#ccc; --mut:#8a8a8a;
-    --user-bub:#233427; --agent-bub:#3a2620; --chip:#333; --btn2:#3a3d41; --sep:#5a5a5a;
+    --user-bub:#222b24; --agent-bub:#2a2d2f; --chip:#333; --btn2:#3a3d41; --sep:#5a5a5a;
     --code-bg:#161616; --code-fg:#eee; --mark:#6f5a18; }
   body.light { --bg:#fff; --panel:#f7f7f7; --line:#dedede; --fg:#333; --mut:#767676;
-    --user-bub:#f4fbf1; --agent-bub:#f8efeb; --chip:#f1f1f1; --btn2:#e9e9e9; --sep:#bbb;
+    --user-bub:#f8fcf6; --agent-bub:#f2f4f5; --chip:#f1f1f1; --btn2:#e9e9e9; --sep:#bbb;
     --agent-strong:#c15f3c; --user-strong:#4f9f62; --code-bg:#282828; --code-fg:#eee; --mark:#ffe98f; }
   body { background:var(--bg); color:var(--fg); display:flex; flex-direction:column; height:100vh; }
   .vhead { padding:8px 12px 7px; border-bottom:1px solid var(--line); background:var(--panel); flex-shrink:0; position:relative; }
@@ -243,12 +265,16 @@ class ConversationViewer {
   body[data-names="off"] .who { display:none; }
   .body p { margin:0 0 7px; white-space:pre-wrap; }
   .body p:last-child { margin-bottom:0; }
+  .body a { color:var(--vscode-textLink-foreground,#2677c9); text-decoration:underline; text-underline-offset:2px; }
+  .body a:hover { color:var(--vscode-textLink-activeForeground,#1a8cff); }
   .body h3 { margin:3px 0 6px; font-size:14px; line-height:1.28; }
   .body ul, .body ol { margin:6px 0 6px 19px; padding:0; }
   code.inline { background:rgba(255,255,255,.48); border-radius:4px; padding:1px 4px;
     color:var(--agent-strong); font:12px ui-monospace,Menlo,monospace; }
   .quote { border-left:3px solid var(--agent-strong); background:rgba(255,255,255,.35); padding:5px 8px;
     border-radius:6px; margin:7px 0; color:var(--fg); }
+  .attach { display:inline-block; border:1px solid var(--line); color:var(--mut); background:rgba(127,127,127,.08);
+    border-radius:999px; padding:1px 8px; font-size:11.5px; margin-bottom:2px; }
   pre { margin:8px 0; padding:9px 10px; border-radius:8px; background:var(--code-bg); color:var(--code-fg);
     overflow-x:auto; font:12px/1.45 ui-monospace,Menlo,monospace; }
   .code-label { display:flex; justify-content:space-between; align-items:center; gap:8px; color:#b9b9b9; font-size:11px; margin-bottom:5px; }
@@ -362,8 +388,48 @@ function visibleText(html) {
   return div.textContent || '';
 }
 
+function escAttr(s) {
+  return escHtml(s).replace(/"/g, '&quot;');
+}
+
+function isOpenableHref(href) {
+  return /^(https?:\/\/|mailto:|file:\/\/|~\/|\/|\\.\\.?\/)/i.test(href) || /^[A-Za-z0-9._-]+\\//.test(href);
+}
+
+function anchorHtml(label, href) {
+  const clean = String(href || '').trim();
+  if (!isOpenableHref(clean)) return escHtml(label);
+  return '<a href="#" data-href="' + escAttr(clean) + '">' + escHtml(label) + '</a>';
+}
+
+function renderInlineSegment(text) {
+  const token = /(\\[[^\\]]+\\]\\([^\\s)]+\\)|(?:https?:\\/\\/|file:\\/\\/)[^\\s<>()]+)/g;
+  let out = '';
+  let last = 0;
+  let match;
+  while ((match = token.exec(text))) {
+    out += escHtml(text.slice(last, match.index));
+    const raw = match[0];
+    const md = raw.match(/^\\[([^\\]]+)\\]\\(([^\\s)]+)\\)$/);
+    if (md) {
+      out += anchorHtml(md[1], md[2]);
+    } else {
+      const trailing = raw.match(/[.,;:!?]+$/);
+      const punct = trailing ? trailing[0] : '';
+      const href = punct ? raw.slice(0, -punct.length) : raw;
+      out += anchorHtml(href, href) + escHtml(punct);
+    }
+    last = token.lastIndex;
+  }
+  out += escHtml(text.slice(last));
+  return out;
+}
+
 function inlineMarkdown(text) {
-  return escHtml(text).replace(/\\\`([^\\\`]+)\\\`/g, '<code class="inline">$1</code>');
+  return String(text).split(/(\\\`[^\\\`]*\\\`)/g).map(part => {
+    if (part.startsWith('\`') && part.endsWith('\`')) return '<code class="inline">' + escHtml(part.slice(1, -1)) + '</code>';
+    return renderInlineSegment(part).replace(/\\[image attachment x(\\d+)([^\\]]*)\\]/g, '<span class="attach">image attachment x$1$2</span>');
+  }).join('');
 }
 
 function renderSimpleMarkdown(text) {
@@ -434,12 +500,38 @@ function renderBlocks(text) {
 function highlightHtml(html, query, isCurrent) {
   if (!query) return html;
   const safe = query.replace(/[.*+?^${'${'}}()|[\\]\\\\]/g, '\\\\$&');
+  const regex = new RegExp('(' + safe + ')', 'gi');
   let markedCurrent = false;
-  return html.replace(new RegExp('(' + safe + ')', 'gi'), m => {
-    const cls = isCurrent && !markedCurrent ? ' class="current"' : '';
-    markedCurrent = true;
-    return '<mark' + cls + '>' + m + '</mark>';
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = node.parentElement;
+      if (parent && ['CODE', 'PRE', 'MARK'].includes(parent.tagName)) return NodeFilter.FILTER_REJECT;
+      regex.lastIndex = 0;
+      return regex.test(node.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+    }
   });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    regex.lastIndex = 0;
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    let match;
+    while ((match = regex.exec(node.nodeValue))) {
+      frag.append(document.createTextNode(node.nodeValue.slice(last, match.index)));
+      const mark = document.createElement('mark');
+      if (isCurrent && !markedCurrent) mark.className = 'current';
+      markedCurrent = true;
+      mark.textContent = match[0];
+      frag.append(mark);
+      last = match.index + match[0].length;
+    }
+    frag.append(document.createTextNode(node.nodeValue.slice(last)));
+    node.parentNode.replaceChild(frag, node);
+  }
+  return template.innerHTML;
 }
 
 function renderMessageBody(m, index, isCurrentMatch) {
@@ -617,6 +709,12 @@ document.querySelectorAll('[data-th]').forEach(b => b.onclick = () => {
   b.classList.add('on');
   document.body.className = b.dataset.th === 'system' ? 'sys' : b.dataset.th;
   vscodeApi.postMessage({ type:'setConfig', theme: b.dataset.th });
+});
+document.addEventListener('click', e => {
+  const link = e.target.closest && e.target.closest('a[data-href]');
+  if (!link) return;
+  e.preventDefault();
+  vscodeApi.postMessage({ type:'openLink', href:link.dataset.href });
 });
 $('chat').addEventListener('scroll', updateRail, { passive:true });
 window.addEventListener('resize', updateRail);

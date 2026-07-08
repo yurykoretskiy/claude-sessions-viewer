@@ -12,6 +12,8 @@ const path = require('path');
 let panelsCreated = 0;
 let terminalsCreated = 0;
 let lastError = null;
+let lastOpenedExternal = null;
+let lastCommand = null;
 
 const fakeVscode = {
   window: {
@@ -32,9 +34,9 @@ const fakeVscode = {
   },
   ViewColumn: { One: 1, Beside: -2 },
   workspace: { getConfiguration: () => ({ get: (k, d) => d }) },
-  Uri: { joinPath() { return {}; }, file() { return {}; } },
-  env: { clipboard: { writeText() {} } },
-  commands: { executeCommand() {} },
+  Uri: { joinPath() { return {}; }, file(fsPath) { return { fsPath }; }, parse(value) { return { value }; } },
+  env: { clipboard: { writeText() {} }, openExternal(uri) { lastOpenedExternal = uri; } },
+  commands: { executeCommand(command, uri) { lastCommand = { command, uri }; } },
 };
 
 const origLoad = Module._load;
@@ -80,4 +82,22 @@ test('resume refuses a non-UUID session id (shell-injection guard)', async () =>
   const good = { id: '11111111-2222-3333-4444-555555555555', file, cwd: '/tmp' };
   await viewer.onMessage({ session: good, convo: { messages: [] }, title: 'T', folder: 'F' }, { type: 'resume' });
   assert.strictEqual(terminalsCreated, 1, 'terminal opened for valid UUID');
+});
+
+test('openLink routes web links externally and local paths through VS Code', async () => {
+  const viewer = new ConversationViewer({});
+  const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };
+  const entry = { session, convo: { messages: [] }, title: 'T', folder: 'F' };
+
+  lastOpenedExternal = null;
+  lastCommand = null;
+  await viewer.onMessage(entry, { type: 'openLink', href: 'https://example.com/docs' });
+  assert.deepStrictEqual(lastOpenedExternal, { value: 'https://example.com/docs' });
+  assert.strictEqual(lastCommand, null);
+
+  lastOpenedExternal = null;
+  await viewer.onMessage(entry, { type: 'openLink', href: 'notes/demo.md' });
+  assert.strictEqual(lastOpenedExternal, null);
+  assert.strictEqual(lastCommand.command, 'vscode.open');
+  assert.strictEqual(lastCommand.uri.fsPath, path.join(tmp, 'notes', 'demo.md'));
 });
