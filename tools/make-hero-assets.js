@@ -41,26 +41,26 @@ const { ConversationViewer } = require('../viewer');
 const D1 = '2026-07-08';
 const D2 = '2026-07-09';
 const MESSAGES = [
-  { role: 'user', ts: `${D1}T17:42:00Z`,
+  { role: 'user', ts: `${D1}T09:42:00Z`,
     text: 'The sync worker retries forever when the API answers 429. Can you find out why?' },
-  { role: 'assistant', ts: `${D1}T17:42:40Z`,
+  { role: 'assistant', ts: `${D1}T09:42:40Z`,
     text: 'Looking at `worker/sync.js` — the retry loop ignores the `Retry-After` header, and **the backoff resets on every queue tick**, so it hammers the API at full speed.' },
-  { role: 'assistant', ts: `${D1}T17:43:30Z`,
+  { role: 'assistant', ts: `${D1}T09:43:30Z`,
     text: 'Here is the problem spot:\n```js\nwhile (queue.length) {\n  const res = await push(queue[0]);\n  if (res.status === 429) continue; // no backoff!\n  queue.shift();\n}\n```\n**Root cause:** the `continue` skips straight back into the loop.' },
-  { role: 'user', ts: `${D1}T17:45:00Z`,
+  { role: 'user', ts: `${D1}T09:45:00Z`,
     text: 'fix it and add a test' },
-  { role: 'assistant', ts: `${D1}T17:47:10Z`,
+  { role: 'assistant', ts: `${D1}T09:47:10Z`,
     text: 'Applied the fix — `backoffMs` now doubles up to 60s and honors `Retry-After` when present.' },
-  { role: 'assistant', ts: `${D1}T17:48:00Z`,
+  { role: 'assistant', ts: `${D1}T09:48:00Z`,
     text: '**Done.** 12/12 tests pass, including the new `retry-backoff.test.js`:\n- 429 → waits `Retry-After` seconds before the next attempt\n- repeated 429 → exponential backoff, capped at 60s\n- success resets the backoff window' },
-  { role: 'user', ts: `${D2}T09:05:00Z`,
+  { role: 'user', ts: `${D2}T01:05:00Z`,
     text: 'morning — deploy went out. can you double-check the worker logs look sane?',
     attachments: [{ id: 'att-demo-1', mediaType: 'image/png', kind: 'image', data: '' }] },
-  { role: 'assistant', ts: `${D2}T09:06:20Z`,
+  { role: 'assistant', ts: `${D2}T01:06:20Z`,
     text: 'Checked the last 2h of logs: zero retry storms, backoff kicks in exactly once per 429 and the queue drains normally. The p95 push latency dropped from 3.1s to 240ms.' },
-  { role: 'user', ts: `${D2}T09:08:00Z`,
+  { role: 'user', ts: `${D2}T01:08:00Z`,
     text: 'perfect. summarize what changed for the changelog' },
-  { role: 'assistant', ts: `${D2}T09:08:45Z`,
+  { role: 'assistant', ts: `${D2}T01:08:45Z`,
     text: '**Changelog entry:**\n> Fixed: sync worker no longer retry-storms on 429 responses. Backoff is exponential (capped at 60s) and honors `Retry-After`. Added regression tests.' },
 ];
 
@@ -94,12 +94,14 @@ function pageHtml(theme) {
     const f = path.join(tmp, `demo-${theme}-${frameN}.html`);
     fs.writeFileSync(f, pageHtml(theme));
     await page.goto('file://' + f, { waitUntil: 'load' });
+    await page.waitForTimeout(400); // let the initial smooth scroll-to-bottom finish
     await page.$eval('.chat', (el) => { el.style.scrollBehavior = 'auto'; el.scrollTop = 0; });
-    await page.waitForTimeout(120);
+    await page.waitForTimeout(250);
+    await page.$eval('.chat', (el) => { el.scrollTop = 0; });
   };
   // Park the cursor and let transient chrome (tooltips, the position pill,
   // hover states) fade before any capture.
-  const settle = async () => { await page.mouse.move(30, 520); await page.waitForTimeout(1000); };
+  const settle = async () => { await page.mouse.move(440, 60); await page.waitForTimeout(1000); };
   const shot = async (name) => {
     await settle();
     const p = path.join(outDir, name);

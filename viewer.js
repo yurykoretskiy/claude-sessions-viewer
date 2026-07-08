@@ -329,13 +329,13 @@ class ConversationViewer {
   .body a:hover { color:var(--vscode-textLink-activeForeground,#1a8cff); }
   .body h3 { margin:4px 0 6px; font-size:1.1em; line-height:1.25; }
   .body ul, .body ol { margin:6px 0 6px 19px; padding:0; }
-  code.inline { background:rgba(255,255,255,.48); border-radius:4px; padding:1px 4px;
+  code.inline { background:color-mix(in srgb, var(--fg) 13%, transparent); border-radius:4px; padding:1px 4px;
     color:var(--agent-strong); font-family:var(--vscode-editor-font-family, ui-monospace, Menlo, monospace);
     font-size:calc(var(--vscode-editor-font-size, 12px) * 0.95); }
-  .quote { border-left:3px solid var(--agent-strong); background:rgba(255,255,255,.45); padding:6px 8px;
+  .quote { border-left:3px solid var(--agent-strong); background:color-mix(in srgb, var(--fg) 8%, transparent); padding:6px 8px;
     border-radius:6px; margin:7px 0; color:var(--fg); }
   .attachments { display:flex; flex-wrap:wrap; gap:5px; margin:0 0 6px; }
-  .attach { border:1px solid var(--line); color:var(--mut); background:rgba(255,255,255,.38);
+  .attach { border:1px solid var(--line); color:var(--mut); background:color-mix(in srgb, var(--fg) 9%, transparent);
     border-radius:999px; padding:2px 8px; font:inherit; font-size:11.5px; cursor:pointer; }
   .attach:hover { color:var(--fg); border-color:var(--agent-strong); }
   pre { margin:8px 0; padding:9px 10px; border-radius:8px; background:var(--code-bg); color:var(--code-fg);
@@ -344,7 +344,7 @@ class ConversationViewer {
   .code-label { display:flex; justify-content:space-between; align-items:center; gap:8px; color:#b9b9b9; font-size:11px; margin-bottom:5px; }
   .copy-code { border:1px solid #555; border-radius:5px; background:transparent; color:#dcdcdc; font:inherit; font-size:11px; cursor:pointer; }
   .table-wrap { max-width:100%; overflow-x:auto; margin:8px 0; border:1px solid color-mix(in srgb, var(--line) 80%, var(--fg));
-    border-radius:8px; background:rgba(255,255,255,.35); }
+    border-radius:8px; background:color-mix(in srgb, var(--fg) 6%, transparent); }
   table { border-collapse:collapse; min-width:470px; width:100%; font-size:0.86em; }
   th, td { border-bottom:1px solid var(--line); padding:5px 7px; text-align:left; vertical-align:top; }
   th { background:rgba(0,0,0,.05); font-weight:700; }

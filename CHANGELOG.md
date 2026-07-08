@@ -6,6 +6,14 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.15.2] — 2026-07-09
+
+### Fixed
+- Inline code, quotes, attachment chips, and table backgrounds were
+  hardcoded to translucent **white**, which made them unreadable blur
+  pills in dark themes. They now derive from the theme's foreground color
+  (`color-mix`), so they read correctly in light, dark, and system themes.
+
 ## [1.15.1] — 2026-07-09
 
 ### Fixed
