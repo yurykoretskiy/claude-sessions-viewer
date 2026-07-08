@@ -6,6 +6,34 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.12.0] — 2026-07-08
+
+### Added
+- **Scan/Read density toggle.** Scan mode renders every message as a
+  single-line, role-striped row with a right-aligned time — built for
+  scrolling a long session in seconds. Click a row to expand it in place to
+  the full bubble (markdown, code, links, attachments); click it again (or
+  its fold control) to collapse. Search auto-expands matching rows in Scan
+  mode and folds everything back when cleared. The choice persists via the
+  new `claudeSessionsViewer.viewerDensity` setting and is restored for new
+  panels.
+- Instant custom tooltips (`data-tip`, ~150ms) on the icon-only header/control
+  buttons, replacing the native `title` tooltip's slow OS delay.
+
+### Changed
+- **Native typography.** The viewer's prose and monospace text now follow
+  VS Code's own font family/size (`--vscode-font-family`,
+  `--vscode-editor-font-family`, etc.) instead of a hardcoded font stack, so
+  it matches the official Claude panel's look. Markdown headings and tables
+  now scale in `em` instead of a fixed `px` size.
+- **One-row controls.** The filter chips are now a compact segmented control
+  (`All | Me | <agent>`), Search collapsed to an icon button, and everything
+  else (copy conversation, export, copy raw path, reveal raw file, labels &
+  theme) moved into a single `⋯` overflow menu. The header keeps only the
+  title and the resume button. The control row never wraps. The old
+  "Collapse long" / "Expand all" buttons are removed — the density toggle
+  replaces them (per-message "Read more" still works in Read mode).
+
 ## [1.11.7] — 2026-07-08
 
 ### Fixed

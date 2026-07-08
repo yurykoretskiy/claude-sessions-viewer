@@ -35,6 +35,7 @@ const fakeVscode = {
   },
   ViewColumn: { One: 1, Beside: -2 },
   workspace: { getConfiguration: () => ({ get: (k, d) => d }) },
+  ConfigurationTarget: { Global: 1 },
   Uri: { joinPath() { return {}; }, file(fsPath) { return { fsPath }; }, parse(value) { return { value }; } },
   env: { clipboard: { writeText() {} }, openExternal(uri) { lastOpenedExternal = uri; } },
   commands: { executeCommand(command, uri) { lastCommand = { command, uri }; } },
@@ -146,6 +147,68 @@ test('generated webview script is valid JavaScript', () => {
   const script = html.match(/<script nonce="[^"]+">([\s\S]*)<\/script>/);
   assert.ok(script, 'webview script found');
   assert.doesNotThrow(() => new vm.Script(script[1]));
+});
+
+test('generated HTML contains the density toggle and scan-mode CSS', () => {
+  const viewer = new ConversationViewer({});
+  const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };
+  const html = viewer.html({
+    session,
+    convo: {
+      firstTs: '2026-01-01T10:00:00Z',
+      lastTs: '2026-01-01T10:00:05Z',
+      messages: [{ role: 'user', text: 'hello', ts: '2026-01-01T10:00:00Z' }],
+    },
+    title: 'T',
+    folder: 'F',
+  });
+  assert.match(html, /data-d="read"/);
+  assert.match(html, /data-d="scan"/);
+  assert.match(html, /\.row-text/);
+  assert.match(html, /\.row-time/);
+});
+
+test('a <script> payload inside message text renders escaped, not as a live tag', () => {
+  const viewer = new ConversationViewer({});
+  const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };
+  const html = viewer.html({
+    session,
+    convo: {
+      firstTs: '2026-01-01T10:00:00Z',
+      lastTs: '2026-01-01T10:00:05Z',
+      messages: [{ role: 'user', text: '<script>alert(1)</script>', ts: '2026-01-01T10:00:00Z' }],
+    },
+    title: 'T',
+    folder: 'F',
+  });
+  assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/);
+  // The `<` in every '<' the data blob is escaped to a unicode literal so no
+  // tag (open or close) can ever start there — the payload's `<script>` and
+  // `</script>` both start with `<`, not a raw `<`.
+  assert.match(html, /\\u003cscript>alert\(1\)\\u003c\/script>/);
+});
+
+test('setConfig accepts and persists viewerDensity (rejects unknown values)', async () => {
+  const viewer = new ConversationViewer({});
+  const updates = [];
+  const origGetConfiguration = fakeVscode.workspace.getConfiguration;
+  fakeVscode.workspace.getConfiguration = () => ({
+    get: (k, d) => d,
+    update: (key, value) => { updates.push([key, value]); },
+  });
+  try {
+    const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };
+    const entry = { session, convo: { messages: [] }, title: 'T', folder: 'F' };
+
+    await viewer.onMessage(entry, { type: 'setConfig', viewerDensity: 'scan' });
+    assert.deepStrictEqual(updates.find((u) => u[0] === 'viewerDensity'), ['viewerDensity', 'scan']);
+
+    updates.length = 0;
+    await viewer.onMessage(entry, { type: 'setConfig', viewerDensity: 'bogus' });
+    assert.strictEqual(updates.find((u) => u[0] === 'viewerDensity'), undefined);
+  } finally {
+    fakeVscode.workspace.getConfiguration = origGetConfiguration;
+  }
 });
 
 test('webview locks page scroll so header controls stay visible', () => {

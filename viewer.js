@@ -41,6 +41,7 @@ class ConversationViewer {
       agentLabel: c.get('agentLabel', 'CLAUDE'),
       showNames: c.get('showNames', true),
       liveRefresh: c.get('liveRefresh.enabled', false),
+      viewerDensity: c.get('viewerDensity', 'read'),
     };
   }
 
@@ -192,6 +193,8 @@ class ConversationViewer {
           await c.update('agentLabel', msg.agentLabel || 'CLAUDE', vscode.ConfigurationTarget.Global);
         if (msg.showNames !== undefined)
           await c.update('showNames', !!msg.showNames, vscode.ConfigurationTarget.Global);
+        if (msg.viewerDensity === 'read' || msg.viewerDensity === 'scan')
+          await c.update('viewerDensity', msg.viewerDensity, vscode.ConfigurationTarget.Global);
         break;
       }
     }
@@ -207,6 +210,7 @@ class ConversationViewer {
       agentLabel: cfg.agentLabel,
       showNames: cfg.showNames,
       theme: cfg.theme,
+      density: cfg.viewerDensity === 'scan' ? 'scan' : 'read',
       window: RENDER_WINDOW,
       sessionId: session.id,
       rawPath: session.file,
@@ -221,7 +225,9 @@ class ConversationViewer {
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <style>
   html { height:100%; overflow:hidden; }
-  body { --agent-strong:#d97757; --user-strong:#4f9f62; margin:0; font:14px/1.48 -apple-system,'SF Pro Text','Segoe UI',sans-serif; }
+  body { --agent-strong:#d97757; --user-strong:#4f9f62; margin:0;
+    font-family: var(--vscode-font-family), -apple-system, 'SF Pro Text', 'Segoe UI', sans-serif;
+    font-size: var(--vscode-font-size, 14px); line-height:1.48; }
   body.sys { --bg:var(--vscode-editor-background); --panel:var(--vscode-editor-background);
     --line:var(--vscode-panel-border,#3c3c3c); --fg:var(--vscode-foreground);
     --mut:var(--vscode-descriptionForeground,#8a8a8a); --chip:var(--vscode-badge-background,#333);
@@ -245,26 +251,41 @@ class ConversationViewer {
   .title { font-size:17px; font-weight:680; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .ibtn { width:30px; height:30px; border:1px solid transparent; background:transparent; color:var(--mut); font-size:14px; cursor:pointer; padding:0; border-radius:7px; }
   .ibtn:hover { background:var(--btn2); color:var(--fg); }
-  .ibtn.terminal { width:38px; border-color:var(--line); font:12px/1 ui-monospace,Menlo,monospace; }
+  .ibtn.open { background:var(--btn2); color:var(--agent-strong); }
+  [data-tip] { position:relative; }
+  [data-tip]::after { content:attr(data-tip); position:absolute; top:calc(100% + 6px); left:50%; transform:translateX(-50%);
+    background:var(--vscode-editorHoverWidget-background,#2b2b2b); color:var(--vscode-editorHoverWidget-foreground,#fff);
+    border:1px solid var(--vscode-editorHoverWidget-border,transparent); padding:3px 8px; border-radius:5px;
+    font-size:11px; white-space:nowrap; opacity:0; pointer-events:none; transition:opacity .1s ease; z-index:30; }
+  [data-tip]:hover::after, [data-tip]:focus-visible::after { opacity:1; transition-delay:.15s; }
+  .ibtn.terminal { width:38px; border-color:var(--line); font-family:var(--vscode-editor-font-family, ui-monospace, Menlo, monospace);
+    font-size:calc(var(--vscode-editor-font-size, 12px) * 0.95); line-height:1; }
   .meta { color:var(--mut); font-size:12px; margin-top:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .settings { position:absolute; top:45px; right:14px; background:var(--panel); border:1px solid var(--line);
-    border-radius:10px; padding:12px; font-size:12px; z-index:20; display:none; width:260px;
+  .controls { display:flex; gap:8px; align-items:center; padding:8px 14px; border-bottom:1px solid var(--line);
+    font-size:12px; flex-wrap:nowrap; flex-shrink:0; z-index:4; position:relative; }
+  .segmented { display:flex; border:1px solid var(--line); border-radius:999px; overflow:hidden; flex-shrink:0; }
+  .seg { border:none; border-right:1px solid var(--line); background:transparent; color:var(--mut);
+    padding:3px 10px; cursor:pointer; font:inherit; font-size:11.5px; white-space:nowrap; }
+  .seg:last-child { border-right:none; }
+  .seg.on { background:var(--btn2); color:var(--fg); }
+  .spacer { flex:1 1 auto; }
+  .moremenu { position:absolute; top:100%; right:14px; margin-top:6px; background:var(--panel); border:1px solid var(--line);
+    border-radius:10px; padding:8px; font-size:12px; z-index:20; display:none; width:250px;
     box-shadow:0 8px 28px rgba(0,0,0,.16); }
-  .settings.open { display:block; }
-  .settings .row { display:flex; align-items:center; gap:8px; margin:8px 0; }
-  .settings .lbl { color:var(--mut); width:72px; flex-shrink:0; }
-  .settings .opt { border:1px solid var(--line); border-radius:9px; padding:0 9px; cursor:pointer; color:var(--mut); }
-  .settings .opt.on { border-color:var(--agent-strong); color:var(--agent-strong); }
-  .settings input[type=text] { background:var(--bg); border:1px solid var(--line); color:var(--fg);
+  .moremenu.open { display:block; }
+  .mm-item { display:block; width:100%; text-align:left; border:none; background:transparent; color:var(--fg);
+    padding:7px 8px; border-radius:6px; cursor:pointer; font:inherit; font-size:12.5px; }
+  .mm-item:hover { background:var(--btn2); }
+  .mm-path { margin:-2px 8px 6px; color:var(--mut); font-family:var(--vscode-editor-font-family, ui-monospace, Menlo, monospace);
+    font-size:calc(var(--vscode-editor-font-size, 12px) * 0.85); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mm-sep { height:1px; background:var(--line); margin:7px 2px; }
+  .mm-section-title { color:var(--mut); font-size:11px; text-transform:uppercase; letter-spacing:.04em; padding:4px 8px 2px; }
+  .mm-row { display:flex; align-items:center; gap:8px; margin:6px 8px; }
+  .mm-row .lbl { color:var(--mut); width:56px; flex-shrink:0; }
+  .mm-row .opt { border:1px solid var(--line); border-radius:9px; padding:0 9px; cursor:pointer; color:var(--mut); }
+  .mm-row .opt.on { border-color:var(--agent-strong); color:var(--agent-strong); }
+  .mm-row input[type=text] { background:var(--bg); border:1px solid var(--line); color:var(--fg);
     border-radius:6px; padding:4px 7px; min-width:0; flex:1; font-size:12px; }
-  .controls { display:flex; gap:7px; align-items:center; padding:8px 16px; border-bottom:1px solid var(--line);
-    font-size:12px; flex-wrap:wrap; flex-shrink:0; z-index:4; }
-  .chip { border:1px solid var(--line); background:transparent; color:var(--mut); border-radius:11px;
-    padding:2px 12px; cursor:pointer; font:inherit; font-size:12px; white-space:nowrap; }
-  .chip.on { background:#d8c7df; color:var(--fg); border-color:#8d7c95; }
-  .chip.search { padding-inline:15px; font-weight:650; border-color:color-mix(in srgb, var(--agent-strong) 35%, var(--line)); }
-  .chip.search.open { color:var(--fg); background:color-mix(in srgb, var(--agent-strong) 14%, var(--bg)); border-color:var(--agent-strong); }
-  .sep { width:1px; height:17px; background:var(--line); margin:0 2px; }
   .searchbar { display:none; grid-template-columns:1fr auto auto auto auto; align-items:center; gap:7px;
     padding:8px 16px; border-bottom:1px solid var(--line); flex-shrink:0; z-index:4; }
   .searchbar.open { display:grid; }
@@ -279,6 +300,15 @@ class ConversationViewer {
   .day { width:max-content; margin:12px auto; position:sticky; top:8px; z-index:2; color:var(--mut); font-size:11px;
     background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:2px 10px;
     box-shadow:0 2px 9px rgba(0,0,0,.05); }
+  .row { display:flex; align-items:center; gap:8px; padding:3px 10px; margin:1px 0; border-radius:6px; cursor:pointer; }
+  .row:hover { background:var(--btn2); }
+  .row.user { border-left:3px solid var(--user-strong); padding-left:9px; }
+  .row.assistant { border-left:3px solid var(--agent-strong); padding-left:9px; }
+  .row-text { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:0.92em; color:var(--fg); }
+  .row-time { flex:0 0 auto; color:var(--mut); font-size:0.75em; font-variant-numeric:tabular-nums; }
+  .fold-row { cursor:pointer; color:var(--mut); margin-right:4px; }
+  .fold-row:hover { color:var(--fg); }
+  body[data-density="scan"] .msg .who { cursor:pointer; }
   .msg { max-width:78%; width:fit-content; margin:9px 0; padding:9px 12px; border-radius:13px; overflow-wrap:break-word; position:relative; }
   .msg.user { margin-left:auto; background:var(--user-bub); border-right:3px solid var(--user-strong); border-bottom-right-radius:4px; }
   .msg.assistant { margin-right:auto; background:var(--agent-bub); border-left:3px solid var(--agent-strong); border-bottom-left-radius:4px; }
@@ -291,10 +321,11 @@ class ConversationViewer {
   .body p:last-child { margin-bottom:0; }
   .body a { color:var(--vscode-textLink-foreground,#2677c9); text-decoration:underline; text-underline-offset:2px; }
   .body a:hover { color:var(--vscode-textLink-activeForeground,#1a8cff); }
-  .body h3 { margin:4px 0 6px; font-size:15px; line-height:1.25; }
+  .body h3 { margin:4px 0 6px; font-size:1.1em; line-height:1.25; }
   .body ul, .body ol { margin:6px 0 6px 19px; padding:0; }
   code.inline { background:rgba(255,255,255,.48); border-radius:4px; padding:1px 4px;
-    color:var(--agent-strong); font:12px ui-monospace,Menlo,monospace; }
+    color:var(--agent-strong); font-family:var(--vscode-editor-font-family, ui-monospace, Menlo, monospace);
+    font-size:calc(var(--vscode-editor-font-size, 12px) * 0.95); }
   .quote { border-left:3px solid var(--agent-strong); background:rgba(255,255,255,.45); padding:6px 8px;
     border-radius:6px; margin:7px 0; color:var(--fg); }
   .attachments { display:flex; flex-wrap:wrap; gap:5px; margin:0 0 6px; }
@@ -302,12 +333,13 @@ class ConversationViewer {
     border-radius:999px; padding:2px 8px; font:inherit; font-size:11.5px; cursor:pointer; }
   .attach:hover { color:var(--fg); border-color:var(--agent-strong); }
   pre { margin:8px 0; padding:9px 10px; border-radius:8px; background:var(--code-bg); color:var(--code-fg);
-    overflow-x:auto; font:12px/1.45 ui-monospace,Menlo,monospace; }
+    overflow-x:auto; font-family:var(--vscode-editor-font-family, ui-monospace, Menlo, monospace);
+    font-size:calc(var(--vscode-editor-font-size, 12px) * 0.95); line-height:1.45; }
   .code-label { display:flex; justify-content:space-between; align-items:center; gap:8px; color:#b9b9b9; font-size:11px; margin-bottom:5px; }
   .copy-code { border:1px solid #555; border-radius:5px; background:transparent; color:#dcdcdc; font:inherit; font-size:11px; cursor:pointer; }
   .table-wrap { max-width:100%; overflow-x:auto; margin:8px 0; border:1px solid color-mix(in srgb, var(--line) 80%, var(--fg));
     border-radius:8px; background:rgba(255,255,255,.35); }
-  table { border-collapse:collapse; min-width:470px; width:100%; font-size:12px; }
+  table { border-collapse:collapse; min-width:470px; width:100%; font-size:0.86em; }
   th, td { border-bottom:1px solid var(--line); padding:5px 7px; text-align:left; vertical-align:top; }
   th { background:rgba(0,0,0,.05); font-weight:700; }
   mark { background:var(--mark); color:inherit; border-radius:3px; padding:0 1px; }
@@ -337,35 +369,42 @@ class ConversationViewer {
   }
 </style>
 </head>
-<body class="sys" data-names="${cfg.showNames ? 'on' : 'off'}">
+<body class="sys" data-names="${cfg.showNames ? 'on' : 'off'}" data-density="${cfg.viewerDensity === 'scan' ? 'scan' : 'read'}">
 <main class="viewer">
   <div class="vhead">
     <div class="vrow">
       <span class="title">${esc(title)}</span>
-      <button class="ibtn terminal" id="resume" title="Resume in Claude terminal — the only action that runs anything">▶_</button>
-      <button class="ibtn" id="copyPath" title="Copy full raw session JSONL path">⧉</button>
-      <button class="ibtn" id="export" title="Save conversation as Markdown">⬇</button>
-      <button class="ibtn" id="reveal" title="Open raw .jsonl">{}</button>
-      <button class="ibtn" id="settingsBtn" title="Names">Aa</button>
+      <button class="ibtn terminal" id="resume" aria-label="Resume in Claude terminal" data-tip="Resume — runs in a terminal">▶_</button>
     </div>
     <div class="meta" id="meta">${esc(folder)} · ${nMsgs} messages · ${esc(session.id)} · ${fmt(convo.firstTs)} → ${fmt(convo.lastTs)}</div>
-    <div class="settings" id="settings">
-      <div class="row"><label><input type="checkbox" id="showNames"${cfg.showNames ? ' checked' : ''}> Show names</label></div>
-      <div class="row"><span class="lbl">You</span><input type="text" id="userLabel"></div>
-      <div class="row"><span class="lbl">Agent</span><input type="text" id="agentLabel"></div>
-      <div class="row"><span class="lbl">Theme</span>
-        <span class="opt" data-th="system">System</span><span class="opt" data-th="light">Light</span><span class="opt" data-th="dark">Dark</span></div>
-    </div>
   </div>
   <div class="controls">
-    <button class="chip on" data-f="all">All</button>
-    <button class="chip" data-f="user" id="chipUser">Me</button>
-    <button class="chip" data-f="assistant" id="chipAgent">${esc(cfg.agentLabel)}</button>
-    <span class="sep"></span>
-    <button class="chip" id="collapseLong" title="Collapse long messages">Collapse long</button>
-    <button class="chip" id="expandLong" title="Expand all long messages">Expand all</button>
-    <span class="sep"></span>
-    <button class="chip search" id="searchToggle">Search</button>
+    <div class="segmented" id="filterSeg">
+      <button class="seg on" data-f="all">All</button>
+      <button class="seg" data-f="user" id="chipUser">Me</button>
+      <button class="seg" data-f="assistant" id="chipAgent">${esc(cfg.agentLabel)}</button>
+    </div>
+    <div class="segmented" id="densitySeg">
+      <button class="seg${cfg.viewerDensity === 'scan' ? '' : ' on'}" data-d="read">Read</button>
+      <button class="seg${cfg.viewerDensity === 'scan' ? ' on' : ''}" data-d="scan">Scan</button>
+    </div>
+    <span class="spacer"></span>
+    <button class="ibtn" id="searchToggle" aria-label="Search" data-tip="Search">⌕</button>
+    <button class="ibtn" id="moreBtn" aria-label="More options" data-tip="More options">⋯</button>
+    <div class="moremenu" id="moreMenu">
+      <button class="mm-item" id="mmCopy">Copy conversation</button>
+      <button class="mm-item" id="mmExport">Export Markdown</button>
+      <button class="mm-item" id="mmCopyPath">Copy raw JSONL path</button>
+      <div class="mm-path">${esc(shortHome(session.file))}</div>
+      <button class="mm-item" id="mmReveal">Reveal raw file</button>
+      <div class="mm-sep"></div>
+      <div class="mm-section-title">Labels &amp; theme</div>
+      <div class="mm-row"><label><input type="checkbox" id="showNames"${cfg.showNames ? ' checked' : ''}> Show names</label></div>
+      <div class="mm-row"><span class="lbl">You</span><input type="text" id="userLabel"></div>
+      <div class="mm-row"><span class="lbl">Agent</span><input type="text" id="agentLabel"></div>
+      <div class="mm-row"><span class="lbl">Theme</span>
+        <span class="opt" data-th="system">System</span><span class="opt" data-th="light">Light</span><span class="opt" data-th="dark">Dark</span></div>
+    </div>
   </div>
   <div class="searchbar" id="searchbar">
     <input class="searchbox" id="search" placeholder="Search inside this session">
@@ -387,11 +426,13 @@ const vscodeApi = acquireVsCodeApi();
 const DATA = ${data};
 const DISPLAY_CAP = 700;
 let filter = 'all';
+let density = DATA.density === 'scan' ? 'scan' : 'read';
 let renderAll = DATA.messages.length <= DATA.window * 1.2;
 let currentMatch = 0;
 let matches = [];
 let scrollTimer = 0;
 const expandedMessages = new Set();
+const scanExpanded = new Set();
 const $ = id => document.getElementById(id);
 const escHtml = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
@@ -618,6 +659,7 @@ function render(keepScroll) {
   $('chipAgent').textContent = l.agent;
   matches = collectMatches();
   currentMatch = Math.min(currentMatch, Math.max(0, matches.length - 1));
+  if (density === 'scan' && $('search').value.trim()) matches.forEach(i => scanExpanded.add(i));
   chat.innerHTML = '';
   const msgs = DATA.messages;
   if (!msgs.some(m => m.role !== 'tool')) {
@@ -641,27 +683,46 @@ function render(keepScroll) {
     if (m.role === 'tool') continue;
     if (filter !== 'all' && m.role !== filter) continue;
     if (day && day !== lastDay && filter === 'all') { frag.push('<div class="day">' + day + '</div>'); lastDay = day; }
+    if (density === 'scan' && !scanExpanded.has(i)) {
+      const preview = String(m.text || '').replace(/\s+/g, ' ').trim();
+      const short = preview.length > 100 ? preview.slice(0, 100) + '…' : preview;
+      const timeLabel = m.ts ? new Date(m.ts).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' }) : '';
+      const rowHtml = highlightHtml(escHtml(short), $('search').value.trim(), matches[currentMatch] === i);
+      frag.push('<div class="row ' + m.role + '" data-i="' + i + '" data-day="' + (day || '') + '"><span class="row-text">' + rowHtml + '</span><span class="row-time">' + escHtml(timeLabel) + '</span></div>');
+      continue;
+    }
     const who = m.role === 'user' ? l.user : l.agent;
     const body = renderMessageBody(m, i, matches[currentMatch] === i);
     const icon = m.role === 'user' ? '●' : '✳';
     const attachments = renderAttachments(m.attachments);
     const more = body.long ? '<span class="more" data-i="' + i + '">' + (expandedMessages.has(i) ? 'Show less' : 'Read more') + '</span>' : '';
-    frag.push('<div class="msg ' + m.role + '" data-i="' + i + '" data-day="' + (day || '') + '"><div class="who"><span class="role-icon">' + icon + '</span>' + escHtml(who) + '</div>' + attachments + '<div class="body">' + body.html + '</div>' + more + '</div>');
+    const foldBtn = density === 'scan' ? '<span class="fold-row" data-i="' + i + '">⌃</span>' : '';
+    frag.push('<div class="msg ' + m.role + '" data-i="' + i + '" data-day="' + (day || '') + '"><div class="who">' + foldBtn + '<span class="role-icon">' + icon + '</span>' + escHtml(who) + '</div>' + attachments + '<div class="body">' + body.html + '</div>' + more + '</div>');
   }
   frag.push('<div class="bottom-spacer" aria-hidden="true"></div>');
   chat.insertAdjacentHTML('beforeend', frag.join(''));
   const rall = $('rall');
   if (rall) rall.onclick = () => { renderAll = true; render(); };
-  chat.querySelectorAll('.more').forEach(el => el.onclick = () => {
+  chat.querySelectorAll('.more').forEach(el => el.onclick = (e) => {
+    e.stopPropagation();
     const i = +el.dataset.i;
     if (expandedMessages.has(i)) expandedMessages.delete(i);
     else expandedMessages.add(i);
     render(true);
   });
-  chat.querySelectorAll('.copy-code').forEach(btn => btn.onclick = () => {
+  chat.querySelectorAll('.copy-code').forEach(btn => btn.onclick = (e) => {
+    e.stopPropagation();
     const code = btn.closest('pre').querySelector('code');
     if (code) navigator.clipboard.writeText(code.textContent).catch(() => {});
   });
+  if (density === 'scan') {
+    chat.querySelectorAll('.row').forEach(el => el.onclick = () => { scanExpanded.add(+el.dataset.i); render(true); });
+    chat.querySelectorAll('.fold-row').forEach(el => el.onclick = (e) => { e.stopPropagation(); scanExpanded.delete(+el.dataset.i); render(true); });
+    chat.querySelectorAll('.msg .who').forEach(el => el.onclick = () => {
+      const row = el.closest('.msg');
+      if (row) { scanExpanded.delete(+row.dataset.i); render(true); }
+    });
+  }
   updateMatches(false);
   if (keepScroll && !wasAtBottom) chat.scrollTop = prevScroll;
   else chat.scrollTop = chat.scrollHeight;
@@ -686,7 +747,7 @@ function updateMatches(jump) {
 }
 
 function currentMessage() {
-  const bubbles = Array.from($('chat').querySelectorAll('.msg'));
+  const bubbles = Array.from($('chat').querySelectorAll('.msg, .row'));
   const target = $('chat').getBoundingClientRect().top + $('chat').clientHeight * 0.42;
   let current = bubbles[0];
   for (const bubble of bubbles) {
@@ -724,34 +785,56 @@ window.addEventListener('message', e => {
 });
 
 $('resume').onclick = () => vscodeApi.postMessage({ type:'resume' });
-$('copyPath').onclick = () => vscodeApi.postMessage({ type:'copyPath' });
-$('export').onclick = () => vscodeApi.postMessage(Object.assign({ type:'export' }, state()));
-$('reveal').onclick = () => vscodeApi.postMessage({ type:'reveal' });
-$('settingsBtn').onclick = () => $('settings').classList.toggle('open');
+$('mmCopy').onclick = () => { vscodeApi.postMessage(Object.assign({ type:'copy' }, state())); $('moreMenu').classList.remove('open'); };
+$('mmExport').onclick = () => { vscodeApi.postMessage(Object.assign({ type:'export' }, state())); $('moreMenu').classList.remove('open'); };
+$('mmCopyPath').onclick = () => { vscodeApi.postMessage({ type:'copyPath' }); $('moreMenu').classList.remove('open'); };
+$('mmReveal').onclick = () => { vscodeApi.postMessage({ type:'reveal' }); $('moreMenu').classList.remove('open'); };
+$('moreBtn').onclick = () => $('moreMenu').classList.toggle('open');
+document.addEventListener('click', e => {
+  if (!$('moreMenu').classList.contains('open')) return;
+  if (e.target === $('moreBtn') || $('moreMenu').contains(e.target)) return;
+  $('moreMenu').classList.remove('open');
+});
 $('searchToggle').onclick = () => {
   $('searchbar').classList.toggle('open');
   $('searchToggle').classList.toggle('open', $('searchbar').classList.contains('open'));
   if ($('searchbar').classList.contains('open')) $('search').focus();
 };
 $('jump').onclick = () => { $('chat').scrollTop = $('chat').scrollHeight; updateRail(); };
-$('collapseLong').onclick = () => { expandedMessages.clear(); render(true); };
-$('expandLong').onclick = () => {
-  DATA.messages.forEach((m, i) => { if (m.role !== 'tool' && m.text && (m.text.length > DISPLAY_CAP || m.text.split('\\n').length > 10)) expandedMessages.add(i); });
-  render(true);
-};
 $('showNames').onchange = e => {
   document.body.dataset.names = e.target.checked ? 'on' : 'off';
   vscodeApi.postMessage({ type:'setConfig', showNames: e.target.checked });
 };
 $('userLabel').oninput = () => { render(true); vscodeApi.postMessage({ type:'setConfig', userLabel: $('userLabel').value }); };
 $('agentLabel').oninput = () => { render(true); vscodeApi.postMessage({ type:'setConfig', agentLabel: $('agentLabel').value }); };
-$('search').oninput = () => { currentMatch = 0; render(true); };
+$('search').oninput = () => {
+  currentMatch = 0;
+  if (density === 'scan' && !$('search').value.trim()) scanExpanded.clear();
+  render(true);
+};
 $('next').onclick = () => { if (!matches.length) return; currentMatch = (currentMatch + 1) % matches.length; render(true); updateMatches(true); };
 $('prev').onclick = () => { if (!matches.length) return; currentMatch = (currentMatch - 1 + matches.length) % matches.length; render(true); updateMatches(true); };
 $('clearSearch').onclick = () => {
-  if ($('search').value) { $('search').value = ''; render(true); $('search').focus(); }
-  else { $('searchbar').classList.remove('open'); $('searchToggle').classList.remove('open'); }
+  if ($('search').value) {
+    $('search').value = '';
+    if (density === 'scan') scanExpanded.clear();
+    render(true);
+    $('search').focus();
+  } else {
+    $('searchbar').classList.remove('open');
+    $('searchToggle').classList.remove('open');
+  }
 };
+document.querySelectorAll('[data-d]').forEach(b => b.onclick = () => {
+  if (b.dataset.d === density) return;
+  document.querySelectorAll('[data-d]').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  density = b.dataset.d;
+  document.body.dataset.density = density;
+  scanExpanded.clear();
+  vscodeApi.postMessage({ type:'setConfig', viewerDensity: density });
+  render(true);
+});
 document.querySelectorAll('[data-f]').forEach(b => b.onclick = () => {
   document.querySelectorAll('[data-f]').forEach(x => x.classList.remove('on'));
   b.classList.add('on'); filter = b.dataset.f; currentMatch = 0; render(true);
