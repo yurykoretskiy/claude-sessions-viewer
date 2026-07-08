@@ -269,7 +269,7 @@ class ConversationViewer {
   .count { color:var(--mut); font-size:12px; min-width:46px; text-align:right; }
   .tiny { width:26px; height:26px; border-radius:7px; border:1px solid var(--line); background:transparent; color:var(--mut); cursor:pointer; }
   .chatwrap { position:relative; flex:1; min-height:0; }
-  .chat { height:100%; overflow-y:auto; padding:16px 54px 18px 18px; scroll-behavior:smooth; }
+  .chat { height:100%; overflow-y:auto; padding:16px 54px 76px 18px; scroll-behavior:smooth; }
   .banner { text-align:center; background:var(--chip); color:var(--mut); border-radius:6px; padding:5px 10px; font-size:11.5px; }
   .banner b { color:var(--fg); cursor:pointer; text-decoration:underline; }
   .day { width:max-content; margin:12px auto; position:sticky; top:8px; z-index:2; color:var(--mut); font-size:11px;

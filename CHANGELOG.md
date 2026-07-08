@@ -6,6 +6,12 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.11.4] — 2026-07-08
+
+### Changed
+- Added more bottom breathing room to the conversation viewer so the final
+  messages do not sit tight against the bottom edge or jump button.
+
 ## [1.11.3] — 2026-07-08
 
 ### Added
