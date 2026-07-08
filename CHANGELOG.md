@@ -6,6 +6,19 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.9.0] — 2026-07-08
+
+### Changed
+- **The tree now shows your sessions, not every file on disk.** Transcripts
+  created by SDK automation (`/security-review` runs, background agents —
+  entrypoint `sdk-py`/`sdk-cli`) are hidden by default, matching what the
+  official Claude Code panel lists (in this repo: 4 sessions instead of 29;
+  across the whole store: 81 instead of 213). Old transcripts without an
+  entrypoint field always stay visible. New setting **Sessions Tree → Show
+  Automation Sessions** brings them back.
+- Packaging switched to the official `vsce` tool — the extension details
+  page now gets the full manifest (version, icon, README/changelog assets).
+
 ## [1.8.9] — 2026-07-07
 
 ### Changed

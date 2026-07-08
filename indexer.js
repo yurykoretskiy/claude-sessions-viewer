@@ -11,10 +11,11 @@ const readline = require('readline');
 const PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects');
 
 // Bump when the extracted shape changes so stale cache entries re-index.
-const INDEX_VERSION = 3;
+const INDEX_VERSION = 4;
 
 const RE_TIMESTAMP = /"timestamp":"([^"]+)"/;
 const RE_CWD = /"cwd":"([^"]+)"/;
+const RE_ENTRYPOINT = /"entrypoint":"([^"]+)"/;
 const MAX_PROMPTS = 300;
 const PROMPT_CHARS = 200;
 
@@ -32,6 +33,7 @@ async function indexSessionFile(filePath, options = {}) {
     firstPrompt: null,
     lastPrompt: null,
     cwd: null,
+    entrypoint: null,
     lastTs: null,
     folderMentions: {},
     prompts: [],
@@ -44,6 +46,11 @@ async function indexSessionFile(filePath, options = {}) {
   for await (const line of rl) {
     const tsMatch = RE_TIMESTAMP.exec(line);
     if (tsMatch) result.lastTs = tsMatch[1];
+
+    if (!result.entrypoint) {
+      const epMatch = RE_ENTRYPOINT.exec(line);
+      if (epMatch) result.entrypoint = epMatch[1];
+    }
 
     if (!result.cwd) {
       const cwdMatch = RE_CWD.exec(line);
@@ -202,4 +209,12 @@ async function indexAll(cacheFile, onProgress, options = {}) {
   return sessions;
 }
 
-module.exports = { indexAll, PROJECTS_DIR, effectiveTs };
+// Automation shells (/security-review runs, SDK agents) are real transcript
+// files but not conversations the user had: their entrypoint is sdk-py /
+// sdk-cli, while interactive sessions are claude-vscode / cli. Old
+// transcripts without the field count as interactive (never hide by guess).
+function isAutomationSession(s) {
+  return typeof s.entrypoint === 'string' && s.entrypoint.startsWith('sdk');
+}
+
+module.exports = { indexAll, PROJECTS_DIR, effectiveTs, isAutomationSession };

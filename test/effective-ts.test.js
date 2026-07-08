@@ -59,3 +59,23 @@ test('a live session with a stale content clock sorts above an older session', a
   assert.ok(Date.parse(stale.effTs) > Date.now() - 60_000, 'effTs reflects the fresh mtime');
   assert.ok(stale.lastTs.startsWith('2026-01-01'), 'content clock still preserved separately');
 });
+
+test('automation classifier: sdk entrypoints are automation, interactive/missing are not', () => {
+  const { isAutomationSession } = require('../indexer');
+  assert.strictEqual(isAutomationSession({ entrypoint: 'sdk-py' }), true);
+  assert.strictEqual(isAutomationSession({ entrypoint: 'sdk-cli' }), true);
+  assert.strictEqual(isAutomationSession({ entrypoint: 'claude-vscode' }), false);
+  assert.strictEqual(isAutomationSession({ entrypoint: 'cli' }), false);
+  assert.strictEqual(isAutomationSession({}), false, 'old transcripts without the field stay visible');
+});
+
+test('indexer extracts the entrypoint field', async () => {
+  const file = path.join(projDir, '33333333-cccc-4ccc-8ccc-333333333333.jsonl');
+  fs.writeFileSync(
+    file,
+    JSON.stringify({ type: 'user', cwd: '/tmp/demo', entrypoint: 'sdk-py', timestamp: '2026-01-05T00:00:00Z', message: { content: 'auto' } }) + '\n'
+  );
+  const sessions = await indexAll(path.join(HOME, 'storage', 'cache2.json'), undefined, { includePrompts: false });
+  const auto = sessions.find((s) => s.id.startsWith('33333333'));
+  assert.strictEqual(auto.entrypoint, 'sdk-py');
+})

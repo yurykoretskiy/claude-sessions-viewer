@@ -2,7 +2,7 @@
   "name": "claude-sessions-viewer",
   "displayName": "Claude Sessions Viewer",
   "description": "Browse Claude Code sessions grouped by project folder; right-click any folder to start a Claude session there.",
-  "version": "1.8.9",
+  "version": "1.9.0",
   "publisher": "yurykoretskiy",
   "license": "MIT",
   "engines": {
@@ -269,6 +269,13 @@
             "order": 1,
             "scope": "window",
             "markdownDescription": "Show your prompt/message preview rows **under each session** in the tree. Off by default for faster, session-level browsing."
+          },
+          "claudeSessionsViewer.showAutomationSessions": {
+            "type": "boolean",
+            "default": false,
+            "order": 2,
+            "scope": "window",
+            "markdownDescription": "Also show **automation sessions** — transcripts created by SDK runs such as `/security-review` and background agents, not conversations you had. Off by default: the tree then matches the sessions the official Claude Code panel shows."
           }
         }
       }

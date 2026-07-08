@@ -2,7 +2,7 @@ const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { indexAll } = require('./indexer');
+const { indexAll, isAutomationSession } = require('./indexer');
 const { ConversationViewer } = require('./viewer');
 
 function relativeAge(iso) {
@@ -158,6 +158,7 @@ class SessionTreeProvider {
     const c = vscode.workspace.getConfiguration('claudeSessionsViewer');
     return {
       promptChildren: c.get('promptChildren.enabled', false),
+      showAutomation: c.get('showAutomationSessions', false),
       revealEnabled: c.get('reveal.enabled', true),
       revealOpenConversation: c.get('reveal.openConversation', true),
     };
@@ -257,7 +258,11 @@ class SessionTreeProvider {
             const prev = byId.get(s.id);
             if (!prev || (s.mtimeMs || 0) > (prev.mtimeMs || 0)) byId.set(s.id, s);
           }
-          const sessions = [...byId.values()];
+          // Hide SDK-launched automation shells (/security-review runs,
+          // agents) unless the user opts in — the official Claude panel does
+          // the same, and it is the difference between 29 rows and 4.
+          const showAutomation = this.config.showAutomation;
+          const sessions = [...byId.values()].filter((s) => showAutomation || !isAutomationSession(s));
           const root = this.workspaceRoot;
           this.groups =
             this.treeMode === 'chronological'
@@ -493,6 +498,7 @@ function activate(context) {
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('claudeSessionsViewer.reveal.enabled')) updateRevealStatus();
       if (e.affectsConfiguration('claudeSessionsViewer.promptChildren.enabled')) provider.refresh();
+      if (e.affectsConfiguration('claudeSessionsViewer.showAutomationSessions')) provider.refresh();
     })
   );
   setTimeout(() => {
