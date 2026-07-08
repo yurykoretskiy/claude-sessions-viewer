@@ -6,6 +6,15 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.11.5] — 2026-07-08
+
+### Changed
+- Increased the conversation viewer's bottom resting space so the final
+  message can sit well above the jump button, closer to messenger/editor
+  reading behavior.
+- Changed the custom scroll-position rail from Claude/coral to a neutral
+  muted rail color and shortened it above the bottom jump-button area.
+
 ## [1.11.4] — 2026-07-08
 
 ### Changed
