@@ -6,6 +6,13 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.11.7] — 2026-07-08
+
+### Fixed
+- Replaced bottom padding with a real end-of-chat spacer after the final
+  rendered message, so the last bubble has visible messenger-style resting
+  space even inside VS Code's locked webview scroll container.
+
 ## [1.11.6] — 2026-07-08
 
 ### Fixed

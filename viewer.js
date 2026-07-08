@@ -273,7 +273,7 @@ class ConversationViewer {
   .count { color:var(--mut); font-size:12px; min-width:46px; text-align:right; }
   .tiny { width:26px; height:26px; border-radius:7px; border:1px solid var(--line); background:transparent; color:var(--mut); cursor:pointer; }
   .chatwrap { position:relative; flex:1; min-height:0; }
-  .chat { height:100%; overflow-y:auto; padding:16px 54px 176px 18px; scroll-behavior:smooth; }
+  .chat { height:100%; overflow-y:auto; padding:16px 54px 18px 18px; scroll-behavior:smooth; }
   .banner { text-align:center; background:var(--chip); color:var(--mut); border-radius:6px; padding:5px 10px; font-size:11.5px; }
   .banner b { color:var(--fg); cursor:pointer; text-decoration:underline; }
   .day { width:max-content; margin:12px auto; position:sticky; top:8px; z-index:2; color:var(--mut); font-size:11px;
@@ -327,6 +327,7 @@ class ConversationViewer {
   .jump { position:absolute; right:20px; bottom:16px; background:var(--panel); color:var(--mut);
     border:1px solid var(--line); border-radius:50%; width:34px; height:34px; cursor:pointer;
     display:flex; align-items:center; justify-content:center; z-index:7; }
+  .bottom-spacer { height:176px; flex:0 0 auto; }
   .empty { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--mut); gap:6px; }
   @media (max-width:620px) {
     .chat { padding-right:46px; }
@@ -647,6 +648,7 @@ function render(keepScroll) {
     const more = body.long ? '<span class="more" data-i="' + i + '">' + (expandedMessages.has(i) ? 'Show less' : 'Read more') + '</span>' : '';
     frag.push('<div class="msg ' + m.role + '" data-i="' + i + '" data-day="' + (day || '') + '"><div class="who"><span class="role-icon">' + icon + '</span>' + escHtml(who) + '</div>' + attachments + '<div class="body">' + body.html + '</div>' + more + '</div>');
   }
+  frag.push('<div class="bottom-spacer" aria-hidden="true"></div>');
   chat.insertAdjacentHTML('beforeend', frag.join(''));
   const rall = $('rall');
   if (rall) rall.onclick = () => { renderAll = true; render(); };
