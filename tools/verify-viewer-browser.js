@@ -40,7 +40,8 @@ Module._load = function (request, ...rest) {
 
 const { ConversationViewer } = require('../viewer');
 
-const LONG_BODY = ('line of filler text to exceed the display cap\n').repeat(40) + 'ENDTOKEN';
+const LONG_BODY = ('line of filler text to exceed the display cap\n').repeat(30) +
+  '\n```js\nconst x = 1;\nconst y = 2;\nconst z = 3;\nconst w = 4;\nconst v = 5;\n```\n' + 'ENDTOKEN';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'csv-harness-'));
 const file = path.join(tmp, 'fixture.jsonl');
 fs.writeFileSync(file, '');
@@ -128,6 +129,14 @@ function pageHtml(density) {
   assert.strictEqual(dbg.folded, 3, 'all 3 bubbles start folded (got ' + JSON.stringify(dbg) + ')');
   const clampLines = await page.$eval('body', b => getComputedStyle(b).getPropertyValue('--fold-lines').trim());
   assert.strictEqual(clampLines, '4', 'folded preview is 4 lines by default');
+
+  // PIXEL check, not just class check (a folded code block once rendered at
+  // full height because line-clamp can't fracture scroll containers): every
+  // folded bubble must actually be preview-sized.
+  const heights = await page.$$eval('.msg.folded .bodywrap', els => els.map(e => Math.round(e.getBoundingClientRect().height)));
+  const maxAllowed = await page.$eval('body', (b) => 4 * 1.52 * parseFloat(getComputedStyle(b).fontSize) + 8);
+  assert.ok(heights.every(h => h <= maxAllowed), 'every folded preview is visually clamped (max ' + maxAllowed + '): ' + JSON.stringify(heights));
+  results.push('ok - short mode: folded previews are pixel-clamped incl. code blocks (' + heights.join(', ') + 'px)');
 
   // One click unfolds the ENTIRE merged turn — full long text, no Read more.
   await page.click('.msg[data-i="0"]');

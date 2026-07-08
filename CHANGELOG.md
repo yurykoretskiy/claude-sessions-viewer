@@ -6,6 +6,15 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.15.1] — 2026-07-09
+
+### Fixed
+- Folded messages containing a **code block** rendered at full height —
+  CSS line-clamp cannot fracture scroll containers, so a hard height cap
+  now guarantees every folded preview stays preview-sized. The browser
+  harness gained a pixel-height check so this class of bug can't pass
+  again on class names alone.
+
 ## [1.15.0] — 2026-07-09
 
 ### Added

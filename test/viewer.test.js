@@ -165,6 +165,8 @@ test('generated HTML contains the Short/Full toggle and line-clamp CSS, no scan-
   assert.match(html, /data-d="short"/);
   assert.match(html, /data-d="full"/);
   assert.match(html, /-webkit-line-clamp:var\(--fold-lines, 4\)/);
+  assert.match(html, /max-height:calc\(var\(--fold-lines, 4\) \* 1\.52em\)/,
+    'hard height cap so folded code blocks stay clamped');
   assert.match(html, /data-density="short"/, 'default density is short');
   assert.match(html, /--fold-lines:4/, 'default preview length is 4 lines');
   assert.doesNotMatch(html, /\.row-text/);

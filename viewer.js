@@ -306,7 +306,10 @@ class ConversationViewer {
   .msg { max-width:78%; width:fit-content; margin:9px 0; padding:9px 12px; border-radius:13px; overflow-wrap:break-word; position:relative; }
   .msg.folded { cursor:pointer; margin:4px 0; padding:6px 10px; }
   .msg.folded .bodywrap { display:-webkit-box; -webkit-box-orient:vertical;
-    -webkit-line-clamp:var(--fold-lines, 4); overflow:hidden; }
+    -webkit-line-clamp:var(--fold-lines, 4); overflow:hidden;
+    /* line-clamp can't fracture monolithic children (code blocks are scroll
+       containers), so a hard height cap guarantees the preview stays short */
+    max-height:calc(var(--fold-lines, 4) * 1.52em); }
   .part-sep { height:1px; background:color-mix(in srgb, var(--line) 55%, transparent); margin:9px -3px; }
   .msg:not(.folded) .who { cursor:pointer; }
   .msg, .msg.folded { padding-right:26px; }

@@ -142,3 +142,8 @@
     CI-proven. Hero GIF + 2-3 screenshots carry the visual load; text gets
     much shorter. Fable drafts, Yury tunes the voice. Pairs with 10 + 11
     as the pre-publish polish batch.
+13. Fold chevron polish (from 1.15.0 review): (a) reconsider placement —
+    top-right corner may be wrong side/position; (b) hide the chevron on
+    messages that already fit inside the preview clamp (nothing to fold —
+    detect overflow and suppress the control). Yury unsure the current
+    always-on chevron is right.
