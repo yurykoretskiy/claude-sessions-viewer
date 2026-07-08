@@ -21,6 +21,7 @@ Browser or node evidence is supporting, never final. Final check is always
 | 1.12.0 | Reader v2: native fonts, one-row controls, instant tooltips, fast scan of long sessions | Typography vars, segmented controls + ⋯ menu, data-tip tooltips, Scan preview rows | 26/26 node tests; **Scan previews FAILED in the installed webview** (raw markdown + `/s+/` escaping bug) — recorded, not hidden |
 | 1.13.0 | "Scan previews are gibberish; bring back fold/unfold, Short and Full" | Scan removed entirely; Short = CSS line-clamp of the real rendered bubble | 27/27 node tests incl. escaping-trap regression; installed check by Yury surfaced the next three issues |
 | 1.14.0 | "One bubble got split into many; Read more stacks on the fold; the rail can't be dragged" | One bubble per assistant turn (parts + separators); Short unfold = whole turn in one click; draggable rail, native scrollbar hidden | 28/28 node tests + 9-check browser harness (`tools/verify-viewer-browser.js`) + installed-webview checklist below |
+| 1.15.0 | "**bold** shows asterisks; Read more confuses; each message needs its own visible fold; short preview twice bigger; default short" | Bold renders as `<strong>`; Read more removed — per-bubble fold via corner chevron in both modes; `shortPreviewLines` setting (default 4); density default `short` | 28/28 node tests + 10-check browser harness (bold, chevron fold in full mode, per-bubble isolation) |
 
 ## What each 1.14.0 change means (no-drift statements)
 

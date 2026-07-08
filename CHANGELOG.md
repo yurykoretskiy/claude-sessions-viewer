@@ -6,6 +6,26 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.15.0] — 2026-07-09
+
+### Added
+- **Bold rendering.** `**bold**` in messages now renders as real bold — it
+  used to show raw asterisks (the inline markdown handled only code and
+  links).
+- **Visible fold chevron on every bubble.** Each message shows a corner
+  `⌄`/`⌃` control, so you can always see that a message is folded and toggle
+  it — in both Short and Full mode, per message, any mix at once.
+- New setting `claudeSessionsViewer.shortPreviewLines` (default 4): how many
+  lines a folded message shows as its preview.
+
+### Changed
+- **Short is now the default** — sessions open with every message folded to
+  a 4-line preview (twice the previous 2-line clamp); unfold what you want
+  to read.
+- **"Read more" / "Show less" removed entirely.** One mechanism remains:
+  fold/unfold. Short|Full sets the default for all messages; the chevron
+  (or click) overrides per bubble. No more stacked expansion steps.
+
 ## [1.14.0] — 2026-07-09
 
 ### Changed

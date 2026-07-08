@@ -164,7 +164,9 @@ test('generated HTML contains the Short/Full toggle and line-clamp CSS, no scan-
   });
   assert.match(html, /data-d="short"/);
   assert.match(html, /data-d="full"/);
-  assert.match(html, /-webkit-line-clamp:2/);
+  assert.match(html, /-webkit-line-clamp:var\(--fold-lines, 4\)/);
+  assert.match(html, /data-density="short"/, 'default density is short');
+  assert.match(html, /--fold-lines:4/, 'default preview length is 4 lines');
   assert.doesNotMatch(html, /\.row-text/);
   assert.doesNotMatch(html, /\.row-time/);
 });
@@ -216,9 +218,16 @@ test('turn-merge, unified fold, and draggable rail are present in the generated 
   assert.match(script, /class="part" data-i=/);
   assert.match(script, /part-sep/);
 
-  // Unified fold: unfolding in Short mode renders parts at full length.
-  assert.match(script, /forceFull/);
+  // Unified fold: one mechanism — per-bubble overrides against the mode
+  // default, a visible chevron on every bubble, and NO Read more anywhere.
+  assert.match(script, /overrides/);
+  assert.match(script, /fold-ind/);
+  assert.doesNotMatch(script, /Read more/);
+  assert.doesNotMatch(script, /Show less/);
   assert.match(html, /\.msg\.folded \.bodywrap/);
+
+  // Bold renders as <strong> (the **asterisks** bug).
+  assert.match(script, /<strong>/);
 
   // Draggable rail is the single scroll affordance.
   assert.match(html, /id="rail"/);

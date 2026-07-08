@@ -41,7 +41,8 @@ class ConversationViewer {
       agentLabel: c.get('agentLabel', 'CLAUDE'),
       showNames: c.get('showNames', true),
       liveRefresh: c.get('liveRefresh.enabled', false),
-      viewerDensity: c.get('viewerDensity', 'full'),
+      viewerDensity: c.get('viewerDensity', 'short'),
+      shortPreviewLines: c.get('shortPreviewLines', 4),
     };
   }
 
@@ -210,7 +211,8 @@ class ConversationViewer {
       agentLabel: cfg.agentLabel,
       showNames: cfg.showNames,
       theme: cfg.theme,
-      density: cfg.viewerDensity === 'short' ? 'short' : 'full',
+      density: cfg.viewerDensity === 'full' ? 'full' : 'short',
+      foldLines: Math.max(1, Math.min(30, Number(cfg.shortPreviewLines) || 4)),
       window: RENDER_WINDOW,
       sessionId: session.id,
       rawPath: session.file,
@@ -303,9 +305,14 @@ class ConversationViewer {
     box-shadow:0 2px 9px rgba(0,0,0,.05); }
   .msg { max-width:78%; width:fit-content; margin:9px 0; padding:9px 12px; border-radius:13px; overflow-wrap:break-word; position:relative; }
   .msg.folded { cursor:pointer; margin:4px 0; padding:6px 10px; }
-  .msg.folded .bodywrap { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; }
+  .msg.folded .bodywrap { display:-webkit-box; -webkit-box-orient:vertical;
+    -webkit-line-clamp:var(--fold-lines, 4); overflow:hidden; }
   .part-sep { height:1px; background:color-mix(in srgb, var(--line) 55%, transparent); margin:9px -3px; }
-  body[data-density="short"] .msg:not(.folded) .who { cursor:pointer; }
+  .msg:not(.folded) .who { cursor:pointer; }
+  .msg, .msg.folded { padding-right:26px; }
+  .fold-ind { position:absolute; top:5px; right:7px; width:16px; height:16px; line-height:15px; text-align:center;
+    color:var(--mut); opacity:.55; cursor:pointer; font-size:11px; border-radius:5px; user-select:none; }
+  .fold-ind:hover { opacity:1; background:var(--btn2); color:var(--fg); }
   .msg.user { margin-left:auto; background:var(--user-bub); border-right:3px solid var(--user-strong); border-bottom-right-radius:4px; }
   .msg.assistant { margin-right:auto; background:var(--agent-bub); border-left:3px solid var(--agent-strong); border-bottom-left-radius:4px; }
   .who { font-size:11px; color:var(--mut); margin-bottom:3px; letter-spacing:.02em; font-weight:700; text-transform:uppercase; }
@@ -370,7 +377,7 @@ class ConversationViewer {
   }
 </style>
 </head>
-<body class="sys" data-names="${cfg.showNames ? 'on' : 'off'}" data-density="${cfg.viewerDensity === 'short' ? 'short' : 'full'}">
+<body class="sys" data-names="${cfg.showNames ? 'on' : 'off'}" data-density="${cfg.viewerDensity === 'full' ? 'full' : 'short'}" style="--fold-lines:${Math.max(1, Math.min(30, Number(cfg.shortPreviewLines) || 4))}">
 <main class="viewer">
   <div class="vhead">
     <div class="vrow">
@@ -386,8 +393,8 @@ class ConversationViewer {
       <button class="seg" data-f="assistant" id="chipAgent">${esc(cfg.agentLabel)}</button>
     </div>
     <div class="segmented" id="densitySeg">
-      <button class="seg${cfg.viewerDensity === 'short' ? ' on' : ''}" data-d="short">Short</button>
-      <button class="seg${cfg.viewerDensity === 'short' ? '' : ' on'}" data-d="full">Full</button>
+      <button class="seg${cfg.viewerDensity === 'full' ? '' : ' on'}" data-d="short">Short</button>
+      <button class="seg${cfg.viewerDensity === 'full' ? ' on' : ''}" data-d="full">Full</button>
     </div>
     <span class="spacer"></span>
     <button class="ibtn" id="searchToggle" aria-label="Search" data-tip="Search">⌕</button>
@@ -425,15 +432,20 @@ class ConversationViewer {
 <script nonce="${nonce}">
 const vscodeApi = acquireVsCodeApi();
 const DATA = ${data};
-const DISPLAY_CAP = 700;
+// Folded previews are clamped by CSS; rendering huge bodies behind the clamp
+// is wasted work, so cap the source text generously relative to the preview.
+const FOLDED_RENDER_CAP = Math.max(1200, (DATA.foldLines || 4) * 160);
 let filter = 'all';
-let density = DATA.density === 'short' ? 'short' : 'full';
+let density = DATA.density === 'full' ? 'full' : 'short';
 let renderAll = DATA.messages.length <= DATA.window * 1.2;
 let currentMatch = 0;
 let matches = [];
 let scrollTimer = 0;
-const expandedMessages = new Set();
-const unfolded = new Set();
+// Bubble ids whose fold state differs from the mode default
+// (Short: default folded, Full: default unfolded). Cleared on mode switch.
+const overrides = new Set();
+const toggleFold = (i) => { if (overrides.has(i)) overrides.delete(i); else overrides.add(i); };
+const isFolded = (i) => (density === 'short') !== overrides.has(i);
 const $ = id => document.getElementById(id);
 const escHtml = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
@@ -510,7 +522,11 @@ function renderInlineSegment(text) {
 function inlineMarkdown(text) {
   return String(text).split(/(\\\`[^\\\`]*\\\`)/g).map(part => {
     if (part.startsWith('\`') && part.endsWith('\`')) return '<code class="inline">' + escHtml(part.slice(1, -1)) + '</code>';
-    return renderInlineSegment(part).replace(/\\[image attachment x(\\d+)([^\\]]*)\\]/g, '<span class="attach">image attachment x$1$2</span>');
+    return part.split(/(\\*\\*[^*\\n]+\\*\\*)/g).map(seg => {
+      if (seg.startsWith('**') && seg.endsWith('**') && seg.length > 4)
+        return '<strong>' + renderInlineSegment(seg.slice(2, -2)) + '</strong>';
+      return renderInlineSegment(seg).replace(/\\[image attachment x(\\d+)([^\\]]*)\\]/g, '<span class="attach">image attachment x$1$2</span>');
+    }).join('');
   }).join('');
 }
 
@@ -625,13 +641,12 @@ function highlightHtml(html, query, isCurrent) {
   return template.innerHTML;
 }
 
-function renderMessageBody(m, index, isCurrentMatch, forceFull) {
+function renderMessageBody(m, index, isCurrentMatch, folded) {
   let text = m.text || '';
-  const long = !forceFull && (text.length > DISPLAY_CAP || text.split('\\n').length > 10);
-  if (long && !expandedMessages.has(index)) text = text.slice(0, DISPLAY_CAP).trimEnd() + '...';
+  if (folded && text.length > FOLDED_RENDER_CAP) text = text.slice(0, FOLDED_RENDER_CAP);
   let html = renderSimpleMarkdown(text);
   html = highlightHtml(html, $('search').value.trim(), isCurrentMatch);
-  return { html, long };
+  return { html };
 }
 
 function collectMatches() {
@@ -689,8 +704,14 @@ function render(keepScroll) {
     else groups.push({ role: m.role, indices: [i] });
     groupOf[i] = groups[groups.length - 1].indices[0];
   }
-  if (density === 'short' && $('search').value.trim())
-    matches.forEach(i => { if (groupOf[i] !== undefined) unfolded.add(groupOf[i]); });
+  // Bubbles containing search matches must be readable: force-unfold them
+  // (in Short by overriding, in Full by removing a manual fold override).
+  if ($('search').value.trim())
+    matches.forEach(i => {
+      const g = groupOf[i];
+      if (g === undefined) return;
+      if (density === 'short') overrides.add(g); else overrides.delete(g);
+    });
   let lastDay = null;
   const frag = [];
   for (const g of groups) {
@@ -700,44 +721,42 @@ function render(keepScroll) {
     if (day && day !== lastDay && filter === 'all') { frag.push('<div class="day">' + day + '</div>'); lastDay = day; }
     const who = g.role === 'user' ? l.user : l.agent;
     const icon = g.role === 'user' ? '●' : '✳';
-    const folded = density === 'short' && !unfolded.has(g0);
-    const forceFull = density === 'short' && !folded;
+    const folded = isFolded(g0);
     const parts = g.indices.map(idx => {
       const m = msgs[idx];
-      const body = renderMessageBody(m, idx, matches[currentMatch] === idx, forceFull);
+      const body = renderMessageBody(m, idx, matches[currentMatch] === idx, folded);
       const attachments = renderAttachments(m.attachments);
-      const more = (!folded && body.long) ? '<span class="more" data-i="' + idx + '">' + (expandedMessages.has(idx) ? 'Show less' : 'Read more') + '</span>' : '';
-      return '<div class="part" data-i="' + idx + '">' + attachments + '<div class="body">' + body.html + '</div>' + more + '</div>';
+      return '<div class="part" data-i="' + idx + '">' + attachments + '<div class="body">' + body.html + '</div></div>';
     }).join('<div class="part-sep"></div>');
     const foldedClass = folded ? ' folded' : '';
-    frag.push('<div class="msg ' + g.role + foldedClass + '" data-i="' + g0 + '" data-day="' + (day || '') + '"><div class="who"><span class="role-icon">' + icon + '</span>' + escHtml(who) + '</div><div class="bodywrap">' + parts + '</div></div>');
+    const foldInd = '<span class="fold-ind" data-fold="' + g0 + '" title="' + (folded ? 'Unfold' : 'Fold') + '">' + (folded ? '⌄' : '⌃') + '</span>';
+    frag.push('<div class="msg ' + g.role + foldedClass + '" data-i="' + g0 + '" data-day="' + (day || '') + '">' + foldInd + '<div class="who"><span class="role-icon">' + icon + '</span>' + escHtml(who) + '</div><div class="bodywrap">' + parts + '</div></div>');
   }
   frag.push('<div class="bottom-spacer" aria-hidden="true"></div>');
   chat.insertAdjacentHTML('beforeend', frag.join(''));
   const rall = $('rall');
   if (rall) rall.onclick = () => { renderAll = true; render(); };
-  chat.querySelectorAll('.more').forEach(el => el.onclick = (e) => {
-    e.stopPropagation();
-    const i = +el.dataset.i;
-    if (expandedMessages.has(i)) expandedMessages.delete(i);
-    else expandedMessages.add(i);
-    render(true);
-  });
   chat.querySelectorAll('.copy-code').forEach(btn => btn.onclick = (e) => {
     e.stopPropagation();
     const code = btn.closest('pre').querySelector('code');
     if (code) navigator.clipboard.writeText(code.textContent).catch(() => {});
   });
-  if (density === 'short') {
-    chat.querySelectorAll('.msg').forEach(el => {
-      const i = +el.dataset.i;
-      el.onclick = (e) => {
-        if (e.target.closest('a[data-href], .attach, .more, .copy-code')) return;
-        if (el.classList.contains('folded')) { unfolded.add(i); render(true); }
-        else if (e.target.closest('.who')) { unfolded.delete(i); render(true); }
-      };
-    });
-  }
+  // Every bubble folds/unfolds individually, in both modes: the corner
+  // chevron always toggles; a folded bubble also unfolds on click anywhere;
+  // an unfolded bubble also folds on its name header.
+  chat.querySelectorAll('.fold-ind').forEach(el => el.onclick = (e) => {
+    e.stopPropagation();
+    toggleFold(+el.dataset.fold);
+    render(true);
+  });
+  chat.querySelectorAll('.msg').forEach(el => {
+    const i = +el.dataset.i;
+    el.onclick = (e) => {
+      if (e.target.closest('a[data-href], .attach, .copy-code')) return;
+      if (el.classList.contains('folded')) { toggleFold(i); render(true); }
+      else if (e.target.closest('.who')) { toggleFold(i); render(true); }
+    };
+  });
   updateMatches(false);
   if (keepScroll && !wasAtBottom) chat.scrollTop = prevScroll;
   else chat.scrollTop = chat.scrollHeight;
@@ -825,7 +844,7 @@ $('userLabel').oninput = () => { render(true); vscodeApi.postMessage({ type:'set
 $('agentLabel').oninput = () => { render(true); vscodeApi.postMessage({ type:'setConfig', agentLabel: $('agentLabel').value }); };
 $('search').oninput = () => {
   currentMatch = 0;
-  if (density === 'short' && !$('search').value.trim()) unfolded.clear();
+  if (!$('search').value.trim()) overrides.clear();
   render(true);
 };
 $('next').onclick = () => { if (!matches.length) return; currentMatch = (currentMatch + 1) % matches.length; render(true); updateMatches(true); };
@@ -833,7 +852,7 @@ $('prev').onclick = () => { if (!matches.length) return; currentMatch = (current
 $('clearSearch').onclick = () => {
   if ($('search').value) {
     $('search').value = '';
-    if (density === 'short') unfolded.clear();
+    overrides.clear();
     render(true);
     $('search').focus();
   } else {
@@ -847,7 +866,7 @@ document.querySelectorAll('[data-d]').forEach(b => b.onclick = () => {
   b.classList.add('on');
   density = b.dataset.d;
   document.body.dataset.density = density;
-  unfolded.clear();
+  overrides.clear();
   vscodeApi.postMessage({ type:'setConfig', viewerDensity: density });
   render(true);
 });

@@ -57,7 +57,7 @@ function pageHtml(density) {
         { role: 'assistant', text: 'progress note one', ts: '2026-01-01T10:00:00Z' },
         { role: 'assistant', text: LONG_BODY, ts: '2026-01-01T10:00:30Z' },
         { role: 'user', text: 'a user question', ts: '2026-01-01T10:01:00Z' },
-        { role: 'assistant', text: 'final answer three', ts: '2026-01-01T10:02:00Z' },
+        { role: 'assistant', text: 'final answer with **boldtoken** inside', ts: '2026-01-01T10:02:00Z' },
       ],
     },
     title: 'Harness', folder: 'F',
@@ -101,29 +101,42 @@ function pageHtml(density) {
   check('turn-merge: first bubble has 2 parts + 1 separator', () =>
     assert.deepStrictEqual([bubbles[0].parts, bubbles[0].seps], [2, 1]));
   check('turn-merge: user bubble stays single-part', () => assert.strictEqual(bubbles[1].parts, 1));
-  check('full mode: long part shows Read more', async () => {});
-  assert.strictEqual(await page.$$eval('.more', els => els.length), 1, 'exactly one Read more (the long part)');
-  assert.ok(!(await page.$eval('.chat', el => el.textContent)).includes('ENDTOKEN'), 'long text capped in full mode');
-  await page.click('.more');
-  assert.ok((await page.$eval('.chat', el => el.textContent)).includes('ENDTOKEN'), 'Read more expands the long part');
-  results.push('ok - full mode: Read more caps and expands the long part');
+
+  // Full mode: everything unfolded by default, Read more is GONE, long text
+  // fully visible, bold renders as <strong>.
+  assert.strictEqual(await page.$$eval('.msg.folded', els => els.length), 0, 'full mode starts all-unfolded');
+  assert.strictEqual(await page.$$eval('.more', els => els.length), 0, 'Read more no longer exists');
+  assert.ok((await page.$eval('.chat', el => el.textContent)).includes('ENDTOKEN'), 'long text fully visible in full mode');
+  assert.strictEqual(await page.$eval('.msg strong', el => el.textContent), 'boldtoken', '**bold** renders as <strong>');
+  results.push('ok - full mode: all unfolded, no Read more, long text fully visible');
+  results.push('ok - markdown: **bold** renders as <strong>');
+
+  // Per-bubble fold in FULL mode: every bubble has a chevron; chevron folds
+  // just that bubble, click unfolds it again.
+  assert.strictEqual(await page.$$eval('.fold-ind', els => els.length), 3, 'every bubble has a fold chevron');
+  await page.click('.msg[data-i="0"] .fold-ind');
+  assert.ok(await page.$('.msg[data-i="0"].folded'), 'chevron folds one bubble in full mode');
+  assert.strictEqual(await page.$$eval('.msg.folded', els => els.length), 1, 'only that bubble folded');
+  await page.click('.msg[data-i="0"]');
+  assert.strictEqual(await page.$$eval('.msg.folded', els => els.length), 0, 'click unfolds it back');
+  results.push('ok - full mode: chevron folds/unfolds a single bubble');
 
   // ---- Short mode ----
   await load('short');
   const dbg = await page.evaluate(() => ({ density: document.body.dataset.density, msgs: document.querySelectorAll('.msg').length, folded: document.querySelectorAll('.msg.folded').length }));
   assert.strictEqual(dbg.density, 'short', 'short page carries data-density=short (got ' + JSON.stringify(dbg) + ')');
-  assert.strictEqual(dbg.folded, 3, 'all 3 bubbles folded (got ' + JSON.stringify(dbg) + ')');
-  assert.strictEqual(await page.$$eval('.more', els => els.length), 0, 'no Read more links while folded');
+  assert.strictEqual(dbg.folded, 3, 'all 3 bubbles start folded (got ' + JSON.stringify(dbg) + ')');
+  const clampLines = await page.$eval('body', b => getComputedStyle(b).getPropertyValue('--fold-lines').trim());
+  assert.strictEqual(clampLines, '4', 'folded preview is 4 lines by default');
 
-  // One click unfolds the ENTIRE merged turn, including the long part, with
-  // no inner Read more step.
+  // One click unfolds the ENTIRE merged turn — full long text, no Read more.
   await page.click('.msg[data-i="0"]');
   const unfoldedText = await page.$eval('.msg[data-i="0"]', el => el.textContent);
   assert.ok(unfoldedText.includes('ENDTOKEN'), 'single click reveals full long text');
-  assert.strictEqual(await page.$$eval('.msg[data-i="0"] .more', els => els.length), 0, 'no nested Read more after unfold');
-  results.push('ok - short mode: one click = entire turn at full length');
+  assert.strictEqual(await page.$$eval('.msg.folded', els => els.length), 2, 'other bubbles stay folded');
+  results.push('ok - short mode: one click = entire turn, others stay folded');
 
-  // Clicking the name header folds it back.
+  // Header and chevron both fold it back.
   await page.click('.msg[data-i="0"] .who');
   assert.ok(await page.$('.msg[data-i="0"].folded'), 'header click folds the bubble back');
   results.push('ok - short mode: header click folds back');

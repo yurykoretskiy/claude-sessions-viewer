@@ -2,7 +2,7 @@
   "name": "claude-sessions-viewer",
   "displayName": "Claude Sessions Viewer",
   "description": "Read Claude Code sessions like chat: locate current work, review history, export Markdown. Read-only, local, zero dependencies.",
-  "version": "1.14.0",
+  "version": "1.15.0",
   "publisher": "yurykoretskiy",
   "license": "MIT",
   "engines": {
@@ -287,13 +287,22 @@
               "short"
             ],
             "enumDescriptions": [
-              "Every message renders as a full bubble, exactly as today.",
-              "Every message is clamped to 2 lines; click a bubble to unfold it in place, click its name header to fold it back."
+              "Every message starts unfolded (full bubbles).",
+              "Every message starts folded to a short preview; unfold the ones you want to read."
             ],
-            "default": "full",
+            "default": "short",
             "order": 6,
             "scope": "window",
-            "markdownDescription": "Density of the conversation viewer. New panels open with this setting; toggling **Short/Full** in the viewer updates it. Any older value from a previous release is treated as **Full**."
+            "markdownDescription": "Default fold state of the conversation viewer. Every message can still be folded/unfolded individually via its corner chevron. Toggling **Short/Full** in the viewer updates this setting."
+          },
+          "claudeSessionsViewer.shortPreviewLines": {
+            "type": "number",
+            "default": 4,
+            "minimum": 1,
+            "maximum": 30,
+            "order": 7,
+            "scope": "window",
+            "markdownDescription": "How many lines a **folded** message shows as its preview (the minimal length of Short mode)."
           }
         }
       },
