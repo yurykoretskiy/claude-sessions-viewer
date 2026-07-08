@@ -342,6 +342,15 @@ class SessionTreeProvider {
     return this.groups.flatMap((g) => g.sessions.map((s) => ({ kind: 'session', session: s, group: g })));
   }
 
+  groupContainsSelectedSession(group) {
+    return !!(
+      this.selectedSessionId &&
+      group &&
+      group.sessions &&
+      group.sessions.some((s) => s.id === this.selectedSessionId)
+    );
+  }
+
   getParent(element) {
     if (element.kind === 'session') {
       if (this.treeMode === 'chronological') return null;
@@ -387,14 +396,17 @@ class SessionTreeProvider {
     }
     if (element.kind === 'folder') {
       const g = element.group;
+      const keepRevealedOpen = this.groupContainsSelectedSession(g);
+      const isExpanded = this.expandedAll || keepRevealedOpen;
       const item = new vscode.TreeItem(
         g.label,
-        this.expandedAll ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed
+        isExpanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed
       );
       // VS Code preserves expansion state by TreeItem.id. Include a small
       // revision so the explicit expand/collapse toolbar button can override
-      // the user's previous manual expansion state.
-      item.id = `${g.id}:${this.expansionRevision}:${this.expandedAll ? 'open' : 'closed'}`;
+      // the user's previous manual expansion state, while the currently
+      // revealed session's folder remains open after collapse-all.
+      item.id = `${g.id}:${this.expansionRevision}:${isExpanded ? 'open' : 'closed'}:${keepRevealedOpen ? this.selectedSessionId : ''}`;
       let exists = true;
       try {
         exists = fs.statSync(g.folderPath).isDirectory();

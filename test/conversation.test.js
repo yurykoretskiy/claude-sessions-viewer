@@ -53,8 +53,11 @@ test('image content blocks render an attachment marker before the text', async (
   ]);
 
   const convo = await extractConversation(file);
-  assert.strictEqual(
-    convo.messages[0].text,
-    '[image attachment x2 (image/png, image/jpeg)]\nPlease inspect this screenshot.'
-  );
+  assert.strictEqual(convo.messages[0].text, 'Please inspect this screenshot.');
+  assert.deepStrictEqual(convo.messages[0].attachments, [
+    { id: 'att-1', kind: 'image', mediaType: 'image/png' },
+    { id: 'att-2', kind: 'image', mediaType: 'image/jpeg' },
+  ]);
+  assert.strictEqual(convo.attachmentsById['att-1'].data, 'abc');
+  assert.strictEqual(convo.attachmentsById['att-2'].data, 'def');
 });

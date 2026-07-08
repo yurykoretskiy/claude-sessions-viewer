@@ -6,6 +6,25 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.11.3] — 2026-07-08
+
+### Added
+- **Clickable image attachments.** User image blocks now render as attachment
+  chips in the conversation viewer. Clicking a chip decodes that one image to
+  a temp file and opens it in VS Code, avoiding heavy base64 image payloads in
+  the webview.
+- Speaker labels now include small role icons so Claude and user bubbles match
+  the approved messenger mockup more closely.
+
+### Changed
+- Restored the conversation viewer shell to match
+  `poc/messenger-viewer-v3-mockup.html` more closely: centered 820px pane,
+  larger title/actions, v3 header/control spacing, bubble margins, and larger
+  jump button.
+- Collapse-all in the tree now keeps the folder containing the selected or
+  revealed session expanded, so the current session stays visible instead of
+  disappearing when the rest of the tree is folded.
+
 ## [1.11.2] — 2026-07-08
 
 ### Fixed

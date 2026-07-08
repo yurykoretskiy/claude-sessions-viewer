@@ -2,7 +2,7 @@
   "name": "claude-sessions-viewer",
   "displayName": "Claude Sessions Viewer",
   "description": "Read Claude Code sessions like chat: locate current work, review history, export Markdown. Read-only, local, zero dependencies.",
-  "version": "1.11.2",
+  "version": "1.11.3",
   "publisher": "yurykoretskiy",
   "license": "MIT",
   "engines": {

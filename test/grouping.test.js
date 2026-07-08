@@ -157,3 +157,23 @@ test('view title switches between folder and timeline modes', () => {
   assert.strictEqual(p.view.title, 'Session Timeline');
   assert.strictEqual(p.view.description, 'newest first');
 });
+
+test('collapse-all keeps the folder containing the revealed session expanded', () => {
+  const p = new SessionTreeProvider(fakeContext({ selectedSessionId: 'b1' }));
+  p.groups = p.buildFolderGroups(sessions, null);
+  p.expandedAll = false;
+
+  const beta = p.groups.find((g) => g.label === 'beta');
+  const gamma = p.groups.find((g) => g.label === 'gamma');
+
+  assert.strictEqual(
+    p.getTreeItem({ kind: 'folder', group: beta }).collapsibleState,
+    fakeVscode.TreeItemCollapsibleState.Expanded,
+    'selected/revealed session folder stays open'
+  );
+  assert.strictEqual(
+    p.getTreeItem({ kind: 'folder', group: gamma }).collapsibleState,
+    fakeVscode.TreeItemCollapsibleState.Collapsed,
+    'unrelated folders stay collapsed'
+  );
+});

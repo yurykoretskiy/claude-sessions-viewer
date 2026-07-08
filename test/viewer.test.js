@@ -103,6 +103,33 @@ test('openLink routes web links externally and local paths through VS Code', asy
   assert.strictEqual(lastCommand.uri.fsPath, path.join(tmp, 'notes', 'demo.md'));
 });
 
+test('openAttachment decodes one image on demand and opens it in VS Code', async () => {
+  const viewer = new ConversationViewer({});
+  const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };
+  const entry = {
+    session,
+    convo: {
+      messages: [],
+      attachmentsById: {
+        'att-1': {
+          id: 'att-1',
+          kind: 'image',
+          mediaType: 'image/png',
+          data: Buffer.from('fake image bytes').toString('base64'),
+        },
+      },
+    },
+    title: 'T',
+    folder: 'F',
+  };
+
+  lastCommand = null;
+  await viewer.onMessage(entry, { type: 'openAttachment', id: 'att-1' });
+  assert.strictEqual(lastCommand.command, 'vscode.open');
+  assert.match(lastCommand.uri.fsPath, /claude-sessions-viewer/);
+  assert.strictEqual(fs.readFileSync(lastCommand.uri.fsPath, 'utf8'), 'fake image bytes');
+});
+
 test('generated webview script is valid JavaScript', () => {
   const viewer = new ConversationViewer({});
   const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };

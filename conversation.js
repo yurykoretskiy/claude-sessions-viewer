@@ -27,7 +27,9 @@ function attachmentLabel(attachments) {
   const documentCount = attachments.filter((a) => a.kind === 'document').length;
   const parts = [];
   if (imageCount) {
-    const mediaTypes = [...new Set(attachments.filter((a) => a.kind === 'image').map((a) => a.media).filter(Boolean))];
+    const mediaTypes = [
+      ...new Set(attachments.filter((a) => a.kind === 'image').map((a) => a.mediaType || a.media).filter(Boolean)),
+    ];
     parts.push(`image attachment x${imageCount}${mediaTypes.length ? ` (${mediaTypes.join(', ')})` : ''}`);
   }
   if (documentCount) parts.push(`document attachment x${documentCount}`);
@@ -35,13 +37,13 @@ function attachmentLabel(attachments) {
 }
 
 function textFromContent(content) {
-  // Returns { text, tools: [names…] }
+  // Returns { text, tools: [names…], attachments: [{kind, mediaType, data}] }
   if (typeof content === 'string') {
     const commandText = commandTextFromMarkup(content);
-    if (commandText) return { text: commandText, tools: [] };
-    return { text: content.startsWith('<') ? '' : content, tools: [] };
+    if (commandText) return { text: commandText, tools: [], attachments: [] };
+    return { text: content.startsWith('<') ? '' : content, tools: [], attachments: [] };
   }
-  if (!Array.isArray(content)) return { text: '', tools: [] };
+  if (!Array.isArray(content)) return { text: '', tools: [], attachments: [] };
   const parts = [];
   const tools = [];
   const attachments = [];
@@ -50,13 +52,17 @@ function textFromContent(content) {
     if (block.type === 'text' && block.text) parts.push(block.text);
     else if (block.type === 'tool_use') tools.push(block.name || 'tool');
     else if (block.type === 'tool_result') tools.push('tool result');
-    else if (block.type === 'image') attachments.push({ kind: 'image', media: block.source && block.source.media_type });
+    else if (block.type === 'image')
+      attachments.push({
+        kind: 'image',
+        mediaType: block.source && block.source.media_type,
+        sourceType: block.source && block.source.type,
+        data: block.source && block.source.data,
+      });
     else if (block.type === 'document') attachments.push({ kind: 'document' });
     // thinking / other non-readable blocks: dropped
   }
-  const attachment = attachmentLabel(attachments);
-  if (attachment) parts.unshift(attachment);
-  return { text: parts.join('\n').trim(), tools };
+  return { text: parts.join('\n').trim(), tools, attachments };
 }
 
 // Coalesce a run of tool names into "[tool: Bash] ×14 · [tool: Read] ×3"
@@ -70,6 +76,7 @@ function toolMarker(names) {
 
 async function extractConversation(jsonlPath) {
   const messages = []; // {role: 'user'|'assistant'|'tool', text, ts}
+  const attachmentsById = {};
   let pendingTools = [];
   let firstTs = null;
   let lastTs = null;
@@ -102,24 +109,33 @@ async function extractConversation(jsonlPath) {
       if (!firstTs) firstTs = ts;
       lastTs = ts;
     }
-    const { text, tools } = textFromContent(obj.message.content);
+    const { text, tools, attachments } = textFromContent(obj.message.content);
     pendingTools.push(...tools);
 
-    if (text) {
+    if (text || (attachments && attachments.length)) {
       flushTools(ts);
       const role = obj.type === 'user' ? 'user' : 'assistant';
       const capped = text.length > MSG_CHAR_CAP ? text.slice(0, MSG_CHAR_CAP) + ' …[truncated]' : text;
+      const messageAttachments = [];
+      for (const a of attachments || []) {
+        if (a.kind !== 'image' || !a.data || a.sourceType !== 'base64') continue;
+        const id = `att-${Object.keys(attachmentsById).length + 1}`;
+        const meta = { id, kind: a.kind, mediaType: a.mediaType || 'image/png' };
+        attachmentsById[id] = { ...meta, data: a.data };
+        messageAttachments.push(meta);
+      }
       // Merge consecutive assistant chunks of one turn into one bubble.
       const prev = messages[messages.length - 1];
       if (prev && prev.role === role && role === 'assistant' && prev.ts === ts) {
         prev.text += '\n\n' + capped;
+        if (messageAttachments.length) prev.attachments = [...(prev.attachments || []), ...messageAttachments];
       } else {
-        messages.push({ role, text: capped, ts });
+        messages.push({ role, text: capped, ts, attachments: messageAttachments });
       }
     }
   }
   flushTools(lastTs);
-  return { messages, firstTs, lastTs };
+  return { messages, attachmentsById, firstTs, lastTs };
 }
 
 // Render the conversation as plain markdown-ish text (for copy / export).
@@ -138,7 +154,9 @@ function conversationToText(convo, opts) {
     }
     if (o.filter !== 'all' && m.role !== o.filter) continue;
     const label = m.role === 'user' ? o.userLabel : o.agentLabel;
-    lines.push(o.names ? `**${label}:** ${m.text}` : m.text, '');
+    const attachment = attachmentLabel(m.attachments || []);
+    const body = [attachment, m.text].filter(Boolean).join('\n');
+    lines.push(o.names ? `**${label}:** ${body}` : body, '');
   }
   return lines.join('\n').trim() + '\n';
 }

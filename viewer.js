@@ -2,6 +2,7 @@
 // runs anything is the explicit resume-in-terminal button.
 
 const vscode = require('vscode');
+const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { fileURLToPath } = require('url');
@@ -166,6 +167,22 @@ class ConversationViewer {
         }
         break;
       }
+      case 'openAttachment': {
+        const id = String(msg.id || '');
+        const attachment = convo.attachmentsById && convo.attachmentsById[id];
+        if (!attachment || attachment.kind !== 'image' || !attachment.data) {
+          vscode.window.showErrorMessage('Claude Sessions: image attachment is unavailable.');
+          break;
+        }
+        const ext = attachment.mediaType === 'image/jpeg' ? 'jpg' : attachment.mediaType === 'image/webp' ? 'webp' : 'png';
+        const safeSessionId = /^[0-9a-f-]+$/i.test(session.id) ? session.id : 'session';
+        const dir = path.join(os.tmpdir(), 'claude-sessions-viewer', safeSessionId);
+        fs.mkdirSync(dir, { recursive: true });
+        const file = path.join(dir, `${id}.${ext}`);
+        fs.writeFileSync(file, Buffer.from(attachment.data, 'base64'));
+        await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(file));
+        break;
+      }
       case 'setConfig': {
         const c = vscode.workspace.getConfiguration('claudeSessionsViewer');
         if (msg.theme) await c.update('theme', msg.theme, vscode.ConfigurationTarget.Global);
@@ -203,90 +220,95 @@ class ConversationViewer {
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <style>
-  body { --agent-strong:#d97757; --user-strong:#4f9f62; margin:0; font:13px/1.55 -apple-system,'SF Pro Text','Segoe UI',sans-serif; }
-  body.sys { --bg:var(--vscode-editor-background); --panel:var(--vscode-sideBar-background,#252526);
+  body { --agent-strong:#d97757; --user-strong:#4f9f62; margin:0; font:14px/1.48 -apple-system,'SF Pro Text','Segoe UI',sans-serif; }
+  body.sys { --bg:var(--vscode-editor-background); --panel:var(--vscode-editor-background);
     --line:var(--vscode-panel-border,#3c3c3c); --fg:var(--vscode-foreground);
     --mut:var(--vscode-descriptionForeground,#8a8a8a); --chip:var(--vscode-badge-background,#333);
     --btn2:var(--vscode-button-secondaryBackground,#3a3d41); --sep:#5a5a5a;
-    --user-bub:color-mix(in srgb, #dff3d7 22%, var(--vscode-editor-background));
-    --agent-bub:color-mix(in srgb, #eef1f3 36%, var(--vscode-editor-background));
+    --user-bub:color-mix(in srgb, #dff3d7 72%, var(--vscode-editor-background));
+    --agent-bub:color-mix(in srgb, #f3d6cc 72%, var(--vscode-editor-background));
     --code-bg:#282828; --code-fg:#eee; --mark:#ffe98f; }
   body.dark { --bg:#1e1e1e; --panel:#252526; --line:#3c3c3c; --fg:#ccc; --mut:#8a8a8a;
-    --user-bub:#222b24; --agent-bub:#2a2d2f; --chip:#333; --btn2:#3a3d41; --sep:#5a5a5a;
+    --user-bub:#233427; --agent-bub:#3a2620; --chip:#333; --btn2:#3a3d41; --sep:#5a5a5a;
     --code-bg:#161616; --code-fg:#eee; --mark:#6f5a18; }
   body.light { --bg:#fff; --panel:#f7f7f7; --line:#dedede; --fg:#333; --mut:#767676;
-    --user-bub:#f8fcf6; --agent-bub:#f2f4f5; --chip:#f1f1f1; --btn2:#e9e9e9; --sep:#bbb;
+    --user-bub:#dff3d7; --agent-bub:#f3d6cc; --chip:#f1f1f1; --btn2:#e9e9e9; --sep:#bbb;
     --agent-strong:#c15f3c; --user-strong:#4f9f62; --code-bg:#282828; --code-fg:#eee; --mark:#ffe98f; }
-  body { background:var(--bg); color:var(--fg); display:flex; flex-direction:column; height:100vh; }
-  .vhead { padding:8px 12px 7px; border-bottom:1px solid var(--line); background:var(--panel); flex-shrink:0; position:relative; }
-  .vrow { display:flex; align-items:center; gap:8px; }
-  .title { font-size:13px; font-weight:650; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .ibtn { border:1px solid transparent; background:transparent; color:var(--mut); font-size:13px; cursor:pointer; padding:2px 6px; border-radius:4px; height:26px; }
+  body { background:var(--bg); color:var(--fg); display:flex; justify-content:center; height:100vh; }
+  .viewer { width:min(820px,100vw); height:100vh; background:var(--panel); border-left:1px solid var(--line); border-right:1px solid var(--line); display:flex; flex-direction:column; position:relative; }
+  .vhead { padding:10px 16px 8px; border-bottom:1px solid var(--line); background:color-mix(in srgb, var(--panel) 97%, transparent); flex-shrink:0; position:relative; z-index:8; }
+  .vrow { display:flex; align-items:center; gap:10px; }
+  .title { font-size:17px; font-weight:680; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ibtn { width:30px; height:30px; border:1px solid transparent; background:transparent; color:var(--mut); font-size:14px; cursor:pointer; padding:0; border-radius:7px; }
   .ibtn:hover { background:var(--btn2); color:var(--fg); }
   .ibtn.terminal { width:38px; border-color:var(--line); font:12px/1 ui-monospace,Menlo,monospace; }
-  .meta { color:var(--mut); font-size:11.5px; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .settings { position:absolute; top:38px; right:10px; background:var(--panel); border:1px solid var(--line);
-    border-radius:8px; padding:10px 12px; font-size:12px; z-index:20; display:none; width:245px;
+  .meta { color:var(--mut); font-size:12px; margin-top:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .settings { position:absolute; top:45px; right:14px; background:var(--panel); border:1px solid var(--line);
+    border-radius:10px; padding:12px; font-size:12px; z-index:20; display:none; width:260px;
     box-shadow:0 8px 28px rgba(0,0,0,.16); }
   .settings.open { display:block; }
-  .settings .row { display:flex; align-items:center; gap:7px; margin:6px 0; }
-  .settings .lbl { color:var(--mut); width:64px; flex-shrink:0; }
+  .settings .row { display:flex; align-items:center; gap:8px; margin:8px 0; }
+  .settings .lbl { color:var(--mut); width:72px; flex-shrink:0; }
   .settings .opt { border:1px solid var(--line); border-radius:9px; padding:0 9px; cursor:pointer; color:var(--mut); }
   .settings .opt.on { border-color:var(--agent-strong); color:var(--agent-strong); }
   .settings input[type=text] { background:var(--bg); border:1px solid var(--line); color:var(--fg);
-    border-radius:4px; padding:2px 6px; min-width:0; flex:1; font-size:12px; }
-  .controls { display:flex; gap:6px; align-items:center; padding:6px 12px; border-bottom:1px solid var(--line);
-    font-size:11.5px; flex-wrap:wrap; flex-shrink:0; }
+    border-radius:6px; padding:4px 7px; min-width:0; flex:1; font-size:12px; }
+  .controls { display:flex; gap:7px; align-items:center; padding:8px 16px; border-bottom:1px solid var(--line);
+    font-size:12px; flex-wrap:wrap; flex-shrink:0; z-index:4; }
   .chip { border:1px solid var(--line); background:transparent; color:var(--mut); border-radius:11px;
-    padding:1px 11px; cursor:pointer; font-size:11.5px; }
-  .chip.on { background:var(--chip); color:var(--fg); border-color:var(--sep); }
+    padding:2px 12px; cursor:pointer; font:inherit; font-size:12px; white-space:nowrap; }
+  .chip.on { background:#d8c7df; color:var(--fg); border-color:#8d7c95; }
   .chip.search { padding-inline:15px; font-weight:650; border-color:color-mix(in srgb, var(--agent-strong) 35%, var(--line)); }
   .chip.search.open { color:var(--fg); background:color-mix(in srgb, var(--agent-strong) 14%, var(--bg)); border-color:var(--agent-strong); }
-  .sep { width:1px; height:16px; background:var(--line); margin:0 2px; }
+  .sep { width:1px; height:17px; background:var(--line); margin:0 2px; }
   .searchbar { display:none; grid-template-columns:1fr auto auto auto auto; align-items:center; gap:7px;
-    padding:6px 12px; border-bottom:1px solid var(--line); flex-shrink:0; }
+    padding:8px 16px; border-bottom:1px solid var(--line); flex-shrink:0; z-index:4; }
   .searchbar.open { display:grid; }
-  .searchbox { min-width:120px; height:26px; border:1px solid var(--line); border-radius:999px;
-    padding:0 10px; background:var(--bg); color:var(--fg); font:inherit; font-size:12px; }
-  .count { color:var(--mut); font-size:11.5px; min-width:42px; text-align:right; }
-  .tiny { width:24px; height:24px; border-radius:6px; border:1px solid var(--line); background:transparent; color:var(--mut); cursor:pointer; }
+  .searchbox { min-width:120px; height:28px; border:1px solid var(--line); border-radius:999px;
+    padding:0 11px; background:var(--bg); color:var(--fg); font:inherit; font-size:12px; }
+  .count { color:var(--mut); font-size:12px; min-width:46px; text-align:right; }
+  .tiny { width:26px; height:26px; border-radius:7px; border:1px solid var(--line); background:transparent; color:var(--mut); cursor:pointer; }
   .chatwrap { position:relative; flex:1; min-height:0; }
-  .chat { height:100%; overflow-y:auto; padding:14px 52px 16px 16px; display:flex; flex-direction:column; gap:9px; scroll-behavior:smooth; }
+  .chat { height:100%; overflow-y:auto; padding:16px 54px 18px 18px; scroll-behavior:smooth; }
   .banner { text-align:center; background:var(--chip); color:var(--mut); border-radius:6px; padding:5px 10px; font-size:11.5px; }
   .banner b { color:var(--fg); cursor:pointer; text-decoration:underline; }
-  .day { align-self:center; position:sticky; top:8px; z-index:2; color:var(--mut); font-size:11px;
+  .day { width:max-content; margin:12px auto; position:sticky; top:8px; z-index:2; color:var(--mut); font-size:11px;
     background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:2px 10px;
     box-shadow:0 2px 9px rgba(0,0,0,.05); }
-  .msg { max-width:78%; width:fit-content; padding:8px 11px; border-radius:12px; overflow-wrap:break-word; }
-  .msg.user { align-self:flex-end; background:var(--user-bub); border-right:3px solid var(--user-strong); border-bottom-right-radius:3px; }
-  .msg.assistant { align-self:flex-start; background:var(--agent-bub); border-left:3px solid var(--agent-strong); border-bottom-left-radius:3px; }
-  .who { font-size:10.5px; color:var(--mut); margin-bottom:3px; letter-spacing:.04em; font-weight:700; text-transform:uppercase; }
-  .msg.assistant .who::before { content:"✳ "; color:var(--agent-strong); }
+  .msg { max-width:78%; width:fit-content; margin:9px 0; padding:9px 12px; border-radius:13px; overflow-wrap:break-word; position:relative; }
+  .msg.user { margin-left:auto; background:var(--user-bub); border-right:3px solid var(--user-strong); border-bottom-right-radius:4px; }
+  .msg.assistant { margin-right:auto; background:var(--agent-bub); border-left:3px solid var(--agent-strong); border-bottom-left-radius:4px; }
+  .who { font-size:11px; color:var(--mut); margin-bottom:3px; letter-spacing:.02em; font-weight:700; text-transform:uppercase; }
+  .role-icon { display:inline-block; margin-right:4px; font-size:12px; line-height:1; vertical-align:-1px; }
+  .msg.assistant .role-icon { color:var(--agent-strong); }
+  .msg.user .role-icon { color:var(--user-strong); }
   body[data-names="off"] .who { display:none; }
   .body p { margin:0 0 7px; white-space:pre-wrap; }
   .body p:last-child { margin-bottom:0; }
   .body a { color:var(--vscode-textLink-foreground,#2677c9); text-decoration:underline; text-underline-offset:2px; }
   .body a:hover { color:var(--vscode-textLink-activeForeground,#1a8cff); }
-  .body h3 { margin:3px 0 6px; font-size:14px; line-height:1.28; }
+  .body h3 { margin:4px 0 6px; font-size:15px; line-height:1.25; }
   .body ul, .body ol { margin:6px 0 6px 19px; padding:0; }
   code.inline { background:rgba(255,255,255,.48); border-radius:4px; padding:1px 4px;
     color:var(--agent-strong); font:12px ui-monospace,Menlo,monospace; }
-  .quote { border-left:3px solid var(--agent-strong); background:rgba(255,255,255,.35); padding:5px 8px;
+  .quote { border-left:3px solid var(--agent-strong); background:rgba(255,255,255,.45); padding:6px 8px;
     border-radius:6px; margin:7px 0; color:var(--fg); }
-  .attach { display:inline-block; border:1px solid var(--line); color:var(--mut); background:rgba(127,127,127,.08);
-    border-radius:999px; padding:1px 8px; font-size:11.5px; margin-bottom:2px; }
+  .attachments { display:flex; flex-wrap:wrap; gap:5px; margin:0 0 6px; }
+  .attach { border:1px solid var(--line); color:var(--mut); background:rgba(255,255,255,.38);
+    border-radius:999px; padding:2px 8px; font:inherit; font-size:11.5px; cursor:pointer; }
+  .attach:hover { color:var(--fg); border-color:var(--agent-strong); }
   pre { margin:8px 0; padding:9px 10px; border-radius:8px; background:var(--code-bg); color:var(--code-fg);
     overflow-x:auto; font:12px/1.45 ui-monospace,Menlo,monospace; }
   .code-label { display:flex; justify-content:space-between; align-items:center; gap:8px; color:#b9b9b9; font-size:11px; margin-bottom:5px; }
   .copy-code { border:1px solid #555; border-radius:5px; background:transparent; color:#dcdcdc; font:inherit; font-size:11px; cursor:pointer; }
   .table-wrap { max-width:100%; overflow-x:auto; margin:8px 0; border:1px solid color-mix(in srgb, var(--line) 80%, var(--fg));
     border-radius:8px; background:rgba(255,255,255,.35); }
-  table { border-collapse:collapse; min-width:430px; width:100%; font-size:12px; }
+  table { border-collapse:collapse; min-width:470px; width:100%; font-size:12px; }
   th, td { border-bottom:1px solid var(--line); padding:5px 7px; text-align:left; vertical-align:top; }
   th { background:rgba(0,0,0,.05); font-weight:700; }
   mark { background:var(--mark); color:inherit; border-radius:3px; padding:0 1px; }
   mark.current { background:#ffc85a; box-shadow:0 0 0 2px rgba(217,119,87,.45); }
-  .more { color:var(--agent-strong); font-size:11.5px; cursor:pointer; margin-top:5px; display:inline-block; }
+  .more { color:var(--agent-strong); font-size:12px; cursor:pointer; margin-top:6px; display:block; }
   .more:hover { text-decoration:underline; }
   .rail { position:absolute; right:13px; top:16px; bottom:18px; width:3px; border-radius:999px;
     background:rgba(127,127,127,.18); pointer-events:none; z-index:5; }
@@ -298,13 +320,20 @@ class ConversationViewer {
     background:rgba(55,55,55,.94); color:#fff; border-radius:999px; padding:4px 9px; font-size:11px;
     line-height:1.2; white-space:nowrap; pointer-events:none; opacity:0; transition:opacity 160ms ease; z-index:6; }
   .chatwrap.scrolling .pospill, .chatwrap:hover .pospill { opacity:1; }
-  .jump { position:absolute; right:20px; bottom:16px; background:var(--btn2); color:var(--fg);
-    border:1px solid var(--line); border-radius:50%; width:30px; height:30px; cursor:pointer;
+  .jump { position:absolute; right:20px; bottom:16px; background:var(--panel); color:var(--mut);
+    border:1px solid var(--line); border-radius:50%; width:34px; height:34px; cursor:pointer;
     display:flex; align-items:center; justify-content:center; z-index:7; }
   .empty { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--mut); gap:6px; }
+  @media (max-width:620px) {
+    .chat { padding-right:46px; }
+    .msg { max-width:86%; }
+    .title { font-size:15px; }
+    .controls { gap:5px; }
+  }
 </style>
 </head>
 <body class="sys" data-names="${cfg.showNames ? 'on' : 'off'}">
+<main class="viewer">
   <div class="vhead">
     <div class="vrow">
       <span class="title">${esc(title)}</span>
@@ -346,6 +375,7 @@ class ConversationViewer {
     <div class="pospill" id="pospill">msg 1 / ${nMsgs}</div>
     <button class="jump" id="jump" title="Jump to last message">↓</button>
   </div>
+</main>
 
 <script nonce="${nonce}">
 const vscodeApi = acquireVsCodeApi();
@@ -435,6 +465,15 @@ function inlineMarkdown(text) {
     if (part.startsWith('\`') && part.endsWith('\`')) return '<code class="inline">' + escHtml(part.slice(1, -1)) + '</code>';
     return renderInlineSegment(part).replace(/\\[image attachment x(\\d+)([^\\]]*)\\]/g, '<span class="attach">image attachment x$1$2</span>');
   }).join('');
+}
+
+function renderAttachments(list) {
+  if (!list || !list.length) return '';
+  return '<div class="attachments">' + list.map((a, idx) => {
+    const label = list.length > 1 ? 'image ' + (idx + 1) : 'image attachment';
+    const media = a.mediaType ? ' · ' + a.mediaType.replace('image/', '') : '';
+    return '<button class="attach" data-attachment="' + escAttr(a.id) + '" title="Open image attachment">' + label + media + '</button>';
+  }).join('') + '</div>';
 }
 
 function renderSimpleMarkdown(text) {
@@ -599,8 +638,10 @@ function render(keepScroll) {
     if (day && day !== lastDay && filter === 'all') { frag.push('<div class="day">' + day + '</div>'); lastDay = day; }
     const who = m.role === 'user' ? l.user : l.agent;
     const body = renderMessageBody(m, i, matches[currentMatch] === i);
-    const more = body.long ? '<span class="more" data-i="' + i + '">' + (expandedMessages.has(i) ? 'Show less ▴' : 'Read more ▾') + '</span>' : '';
-    frag.push('<div class="msg ' + m.role + '" data-i="' + i + '" data-day="' + (day || '') + '"><div class="who">' + escHtml(who) + '</div><div class="body">' + body.html + '</div>' + more + '</div>');
+    const icon = m.role === 'user' ? '●' : '✳';
+    const attachments = renderAttachments(m.attachments);
+    const more = body.long ? '<span class="more" data-i="' + i + '">' + (expandedMessages.has(i) ? 'Show less' : 'Read more') + '</span>' : '';
+    frag.push('<div class="msg ' + m.role + '" data-i="' + i + '" data-day="' + (day || '') + '"><div class="who"><span class="role-icon">' + icon + '</span>' + escHtml(who) + '</div>' + attachments + '<div class="body">' + body.html + '</div>' + more + '</div>');
   }
   chat.insertAdjacentHTML('beforeend', frag.join(''));
   const rall = $('rall');
@@ -716,6 +757,12 @@ document.querySelectorAll('[data-th]').forEach(b => b.onclick = () => {
   vscodeApi.postMessage({ type:'setConfig', theme: b.dataset.th });
 });
 document.addEventListener('click', e => {
+  const attachment = e.target.closest && e.target.closest('[data-attachment]');
+  if (attachment) {
+    e.preventDefault();
+    vscodeApi.postMessage({ type:'openAttachment', id:attachment.dataset.attachment });
+    return;
+  }
   const link = e.target.closest && e.target.closest('a[data-href]');
   if (!link) return;
   e.preventDefault();
