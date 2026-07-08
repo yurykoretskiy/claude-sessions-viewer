@@ -6,6 +6,19 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.10.0] — 2026-07-08
+
+### Changed
+- **Mode 2 is now a flat session timeline.** Instead of re-ordered folder
+  rows, it lists the sessions themselves — newest first, across all folders,
+  interleaving preserved (session → other folder → back), which is the point
+  when you work in several projects at once. Each row shows its folder name
+  on the right; right-click → **Show in folder view** switches to Folders A-Z
+  and reveals the session in its place. The two modes are now visually
+  unmistakable: folders vs a flat list. Folders A-Z is untouched.
+- Expand/collapse-folders toolbar buttons hide in timeline mode (there are
+  no folders to expand there).
+
 ## [1.9.0] — 2026-07-08
 
 ### Changed

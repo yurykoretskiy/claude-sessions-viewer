@@ -63,16 +63,16 @@ class SessionTreeProvider {
     this.context = context;
     this._onDidChangeTreeData = new vscode.EventEmitter();
     this.onDidChangeTreeData = this._onDidChangeTreeData.event;
-    this.groups = []; // [{ id, label, folderPath, sessions: [...] }]
+    this.groups = []; // folders mode: [{ id, label, folderPath, sessions: [...] }]
+    this.timeline = []; // timeline mode: flat [{ kind:'session', session, group }]
     this.loaded = false;
     this.loading = null;
     this.expandedAll = false;
     this.expansionRevision = 0;
     this.selectedSessionId = context.globalState.get('selectedSessionId', null);
-    // 'folders' = one folder row, A-Z, with all sessions inside.
-    // 'chronological' = "recent": the same folder tree re-ordered so the
-    // folder with the newest activity is on top ('chronological' kept as the
-    // stored value for back-compat).
+    // 'folders' = one row per folder, A-Z, with all sessions inside.
+    // 'chronological' = flat session timeline, newest first, across folders
+    // ('chronological' kept as the stored value for back-compat).
     this.treeMode = context.globalState.get('treeMode', 'folders');
   }
 
@@ -85,7 +85,7 @@ class SessionTreeProvider {
     vscode.window.setStatusBarMessage(
       this.treeMode === 'folders'
         ? 'Claude Sessions: folders A-Z.'
-        : 'Claude Sessions: recent activity first.',
+        : 'Claude Sessions: session timeline — newest first.',
       3500
     );
     this.refresh();
@@ -138,7 +138,7 @@ class SessionTreeProvider {
   // are shown via context keys.
   updateModeUi() {
     if (this.view) {
-      const mode = this.treeMode === 'folders' ? 'folders A-Z' : 'recent activity';
+      const mode = this.treeMode === 'folders' ? 'folders A-Z' : 'session timeline';
       this.view.description = this.loaded ? mode : `${mode} · indexing`;
     }
     vscode.commands.executeCommand('setContext', 'claudeSessions.mode', this.treeMode);
@@ -228,16 +228,22 @@ class SessionTreeProvider {
     return groups;
   }
 
-  // "Recent" mode is the SAME tree as folders mode — one row per folder,
-  // sessions newest-first inside — just re-ordered: the folder with the most
-  // recent activity on top. The sort toggle changes order, never structure
-  // (the earlier run-based timeline repeated a busy folder dozens of times).
-  // Group ids are identical in both modes, so expansion state survives
-  // toggling and refreshes.
-  buildRecentGroups(sessions, root) {
-    const groups = this.buildFolderGroups(sessions, root);
-    groups.sort((a, b) => (b.latest || '').localeCompare(a.latest || '') || a.label.localeCompare(b.label));
-    return groups;
+  // The session timeline: a FLAT list of sessions, newest first, across all
+  // folders — the cross-project "order of my work" view for someone working
+  // in several folders at once. No folder wrapper rows (that is what makes it
+  // visually distinct from folders mode); each row carries its folder name in
+  // the description, and "Show in folder view" jumps to the session's place.
+  buildTimeline(sessions, root) {
+    const nodes = [];
+    for (const s of sessions) {
+      const attr = this.folderForSession(s, root);
+      if (!attr) continue;
+      nodes.push({ kind: 'session', session: s, group: { label: attr.label, folderPath: attr.folderPath } });
+    }
+    nodes.sort((a, b) =>
+      (b.session.effTs || b.session.lastTs || '').localeCompare(a.session.effTs || a.session.lastTs || '')
+    );
+    return nodes;
   }
 
   async ensureLoaded() {
@@ -264,10 +270,8 @@ class SessionTreeProvider {
           const showAutomation = this.config.showAutomation;
           const sessions = [...byId.values()].filter((s) => showAutomation || !isAutomationSession(s));
           const root = this.workspaceRoot;
-          this.groups =
-            this.treeMode === 'chronological'
-              ? this.buildRecentGroups(sessions, root)
-              : this.buildFolderGroups(sessions, root);
+          this.groups = this.buildFolderGroups(sessions, root);
+          this.timeline = this.treeMode === 'chronological' ? this.buildTimeline(sessions, root) : [];
           this.loaded = true;
           this.updateModeUi();
           this._onDidChangeTreeData.fire();
@@ -314,23 +318,34 @@ class SessionTreeProvider {
   }
 
   allSessions() {
+    if (this.treeMode === 'chronological') return this.timeline || [];
     return this.groups.flatMap((g) => g.sessions.map((s) => ({ kind: 'session', session: s, group: g })));
   }
 
   getParent(element) {
-    if (element.kind === 'session') return { kind: 'folder', group: element.group };
+    if (element.kind === 'session') {
+      if (this.treeMode === 'chronological') return null;
+      return { kind: 'folder', group: element.group };
+    }
     if (element.kind === 'prompt' && element.parent) return element.parent;
     return null;
   }
 
   async getChildren(element) {
+    const roots = () =>
+      this.treeMode === 'chronological'
+        ? this.timeline || []
+        : this.groups.map((g) => ({ kind: 'folder', group: g }));
     if (!this.loaded) {
       this.ensureLoaded().catch(() => {});
-      if (!element) return this.groups.length ? this.groups.map((g) => ({ kind: 'folder', group: g })) : [this.loadingNode()];
+      if (!element) {
+        const r = roots();
+        return r.length ? r : [this.loadingNode()];
+      }
       return [];
     }
     if (!element) {
-      return this.groups.map((g) => ({ kind: 'folder', group: g }));
+      return roots();
     }
     if (element.kind === 'folder') {
       return element.group.sessions.map((s) => ({ kind: 'session', session: s, group: element.group }));
@@ -352,12 +367,8 @@ class SessionTreeProvider {
     }
     if (element.kind === 'folder') {
       const g = element.group;
-      const label =
-        this.treeMode === 'chronological' && g.latest
-          ? `${g.label} [${relativeAge(g.latest)}]`
-          : g.label;
       const item = new vscode.TreeItem(
-        label,
+        g.label,
         this.expandedAll ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed
       );
       // VS Code preserves expansion state by TreeItem.id. Include a small
@@ -410,7 +421,7 @@ class SessionTreeProvider {
         : vscode.TreeItemCollapsibleState.None
     );
     item.id = 's:' + s.id;
-    item.description = '';
+    item.description = this.treeMode === 'chronological' && element.group ? element.group.label : '';
     // No icon on session rows — the space goes to the session title instead.
     item.contextValue = 'session';
     item.tooltip = new vscode.MarkdownString(
@@ -557,6 +568,17 @@ function activate(context) {
     }),
 
     vscode.commands.registerCommand('claudeSessions.rename', (node) => provider.rename(node)),
+
+    // Timeline row -> jump to the session's place in the folder tree.
+    vscode.commands.registerCommand('claudeSessions.showInFolders', async (node) => {
+      if (!node || node.kind !== 'session') return;
+      const id = node.session.id;
+      if (provider.treeMode !== 'folders') {
+        await provider.toggleGrouping();
+      }
+      await provider.ensureLoaded();
+      await provider.revealSessionById(id);
+    }),
 
     vscode.commands.registerCommand('claudeSessions.revealCurrent', async () => {
       if (!provider.config.revealEnabled) {
