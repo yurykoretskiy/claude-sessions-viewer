@@ -2,7 +2,7 @@
   "name": "claude-sessions-viewer",
   "displayName": "Claude Sessions Viewer",
   "description": "Browse Claude Code sessions grouped by project folder; right-click any folder to start a Claude session there.",
-  "version": "1.8.8",
+  "version": "1.8.9",
   "publisher": "yurykoretskiy",
   "license": "MIT",
   "engines": {
@@ -68,12 +68,12 @@
       },
       {
         "command": "claudeSessions.toggleGrouping",
-        "title": "Claude Sessions: Sort by folders A-Z — click for chronological",
+        "title": "Claude Sessions: Switch to recent-activity order (now: folders A-Z)",
         "icon": "$(list-tree)"
       },
       {
         "command": "claudeSessions.toggleGroupingAlt",
-        "title": "Claude Sessions: Sort chronological — click for folders A-Z",
+        "title": "Claude Sessions: Switch to folders A-Z (now: recent activity)",
         "icon": "$(list-flat)"
       },
       {

@@ -6,6 +6,23 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.8.9] — 2026-07-07
+
+### Changed
+- **The sort toggle now changes order, never structure.** "Recent activity"
+  mode shows the same tree as Folders A-Z — one row per folder, sessions
+  newest-first inside — re-ordered so the folder with the newest activity is
+  on top (folder rows show `[age]` of their newest session). The previous
+  timeline model repeated a busy folder dozens of times. Group ids are
+  identical in both modes, so folder expansion survives toggling. Invariants
+  (no duplicate folder rows, live sessions lift their folder to the top,
+  path-based ids) are pinned by tests.
+- **The live `●` moved to the left**, into the padding slot before `[age]` —
+  the right-hand column is the first thing a narrow sidebar clips. Session
+  rows no longer use the description column at all.
+- Toggle button tooltips are action-first ("Switch to …") instead of
+  describing the current state.
+
 ## [1.8.8] — 2026-07-07
 
 ### Fixed

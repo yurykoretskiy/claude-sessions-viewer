@@ -70,8 +70,9 @@ class SessionTreeProvider {
     this.expansionRevision = 0;
     this.selectedSessionId = context.globalState.get('selectedSessionId', null);
     // 'folders' = one folder row, A-Z, with all sessions inside.
-    // 'chronological' = newest sessions first, wrapped in folder rows; a folder
-    // can appear more than once when its sessions are separated by time.
+    // 'chronological' = "recent": the same folder tree re-ordered so the
+    // folder with the newest activity is on top ('chronological' kept as the
+    // stored value for back-compat).
     this.treeMode = context.globalState.get('treeMode', 'folders');
   }
 
@@ -84,7 +85,7 @@ class SessionTreeProvider {
     vscode.window.setStatusBarMessage(
       this.treeMode === 'folders'
         ? 'Claude Sessions: folders A-Z.'
-        : 'Claude Sessions: newest sessions first.',
+        : 'Claude Sessions: recent activity first.',
       3500
     );
     this.refresh();
@@ -137,7 +138,7 @@ class SessionTreeProvider {
   // are shown via context keys.
   updateModeUi() {
     if (this.view) {
-      const mode = this.treeMode === 'folders' ? 'folders A-Z' : 'chronological';
+      const mode = this.treeMode === 'folders' ? 'folders A-Z' : 'recent activity';
       this.view.description = this.loaded ? mode : `${mode} · indexing`;
     }
     vscode.commands.executeCommand('setContext', 'claudeSessions.mode', this.treeMode);
@@ -226,31 +227,15 @@ class SessionTreeProvider {
     return groups;
   }
 
-  buildChronologicalGroups(sessions, root) {
-    const entries = [];
-    for (const s of sessions) {
-      const attr = this.folderForSession(s, root);
-      if (attr) entries.push({ session: s, folder: attr });
-    }
-    entries.sort((a, b) =>
-      (b.session.effTs || b.session.lastTs || '').localeCompare(a.session.effTs || a.session.lastTs || '')
-    );
-    const groups = [];
-    for (const entry of entries) {
-      const prev = groups[groups.length - 1];
-      if (prev && prev.folderPath === entry.folder.folderPath) {
-        prev.sessions.push(entry.session);
-        continue;
-      }
-      groups.push({
-        id: `t:${entry.folder.folderPath}:${entry.session.id}`,
-        label: entry.folder.label,
-        folderPath: entry.folder.folderPath,
-        latest: entry.session.effTs || entry.session.lastTs || '',
-        sessions: [entry.session],
-      });
-    }
-    markLabelCollisions(groups);
+  // "Recent" mode is the SAME tree as folders mode — one row per folder,
+  // sessions newest-first inside — just re-ordered: the folder with the most
+  // recent activity on top. The sort toggle changes order, never structure
+  // (the earlier run-based timeline repeated a busy folder dozens of times).
+  // Group ids are identical in both modes, so expansion state survives
+  // toggling and refreshes.
+  buildRecentGroups(sessions, root) {
+    const groups = this.buildFolderGroups(sessions, root);
+    groups.sort((a, b) => (b.latest || '').localeCompare(a.latest || '') || a.label.localeCompare(b.label));
     return groups;
   }
 
@@ -276,7 +261,7 @@ class SessionTreeProvider {
           const root = this.workspaceRoot;
           this.groups =
             this.treeMode === 'chronological'
-              ? this.buildChronologicalGroups(sessions, root)
+              ? this.buildRecentGroups(sessions, root)
               : this.buildFolderGroups(sessions, root);
           this.loaded = true;
           this.updateModeUi();
@@ -383,8 +368,7 @@ class SessionTreeProvider {
       // Two projects can share a folder basename; disambiguate only the
       // colliding groups with their shortened parent path.
       const parentHint = g.labelCollision ? shortHome(path.dirname(g.folderPath)) : '';
-      const countPart =
-        this.treeMode === 'chronological' ? '' : `${g.sessions.length}`;
+      const countPart = `${g.sessions.length}`;
       const statusPart = exists ? '' : 'gone';
       item.description = [parentHint, countPart, statusPart].filter(Boolean).join(' · ');
       item.iconPath = vscode.Uri.joinPath(this.context.extensionUri, 'assets', 'folder-spark.svg');
@@ -410,7 +394,10 @@ class SessionTreeProvider {
     // Single em-space padding: VS Code has no per-item indent API, and
     // sessions at the default tree indent read as siblings of the folders.
     const ageTs = s.effTs || s.lastTs;
-    const label = ` ${ageTs ? `[${relativeAge(ageTs)}] ` : ''}${title}`;
+    // Live ● sits in the left padding slot (the right column is the first
+    // thing a narrow sidebar clips); em-space keeps titles aligned otherwise.
+    const live = s.mtimeMs && Date.now() - s.mtimeMs < 5 * 60 * 1000;
+    const label = `${live ? '●' : ' '} ${ageTs ? `[${relativeAge(ageTs)}] ` : ''}${title}`;
     const item = new vscode.TreeItem(
       label,
       this.config.promptChildren && s.prompts && s.prompts.length
@@ -418,8 +405,7 @@ class SessionTreeProvider {
         : vscode.TreeItemCollapsibleState.None
     );
     item.id = 's:' + s.id;
-    const live = s.mtimeMs && Date.now() - s.mtimeMs < 5 * 60 * 1000;
-    item.description = live ? '●' : '';
+    item.description = '';
     // No icon on session rows — the space goes to the session title instead.
     item.contextValue = 'session';
     item.tooltip = new vscode.MarkdownString(
@@ -680,4 +666,5 @@ function activate(context) {
 
 function deactivate() {}
 
-module.exports = { activate, deactivate };
+// SessionTreeProvider is exported for the test suite only.
+module.exports = { activate, deactivate, SessionTreeProvider };
