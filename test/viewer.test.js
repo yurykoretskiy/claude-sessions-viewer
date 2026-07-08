@@ -192,6 +192,40 @@ test('escaping-trap regression: no degraded /s+/ regex survives the template lit
   assert.doesNotMatch(script, /replace\(\/s\+\//);
 });
 
+test('turn-merge, unified fold, and draggable rail are present in the generated page', () => {
+  // Bubbles are built at runtime by the webview script, so these are
+  // source-level invariants; the interactive behavior is verified in a real
+  // browser via tools/verify-viewer-browser.js (local, not CI).
+  const viewer = new ConversationViewer({});
+  const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };
+  const html = viewer.html({
+    session,
+    convo: {
+      firstTs: '2026-01-01T10:00:00Z',
+      lastTs: '2026-01-01T10:00:05Z',
+      messages: [{ role: 'user', text: 'hello', ts: '2026-01-01T10:00:00Z' }],
+    },
+    title: 'T',
+    folder: 'F',
+  });
+  const script = html.match(/<script nonce="[^"]+">([\s\S]*)<\/script>/)[1];
+
+  // Turn-merge: the grouping rule (consecutive assistant messages join the
+  // previous group) exists and bubbles are assembled from parts.
+  assert.match(script, /prev\.role === 'assistant' && m\.role === 'assistant'/);
+  assert.match(script, /class="part" data-i=/);
+  assert.match(script, /part-sep/);
+
+  // Unified fold: unfolding in Short mode renders parts at full length.
+  assert.match(script, /forceFull/);
+  assert.match(html, /\.msg\.folded \.bodywrap/);
+
+  // Draggable rail is the single scroll affordance.
+  assert.match(html, /id="rail"/);
+  assert.match(script, /setPointerCapture/);
+  assert.match(html, /\.chat::-webkit-scrollbar \{ width:0; height:0; \}/);
+});
+
 test('a <script> payload inside message text renders escaped, not as a live tag', () => {
   const viewer = new ConversationViewer({});
   const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };

@@ -294,7 +294,8 @@ class ConversationViewer {
   .count { color:var(--mut); font-size:12px; min-width:46px; text-align:right; }
   .tiny { width:26px; height:26px; border-radius:7px; border:1px solid var(--line); background:transparent; color:var(--mut); cursor:pointer; }
   .chatwrap { position:relative; flex:1; min-height:0; }
-  .chat { height:100%; overflow-y:auto; padding:16px 54px 18px 18px; scroll-behavior:smooth; }
+  .chat { height:100%; overflow-y:auto; padding:16px 54px 18px 18px; scroll-behavior:smooth; scrollbar-width:none; }
+  .chat::-webkit-scrollbar { width:0; height:0; }
   .banner { text-align:center; background:var(--chip); color:var(--mut); border-radius:6px; padding:5px 10px; font-size:11.5px; }
   .banner b { color:var(--fg); cursor:pointer; text-decoration:underline; }
   .day { width:max-content; margin:12px auto; position:sticky; top:8px; z-index:2; color:var(--mut); font-size:11px;
@@ -302,7 +303,9 @@ class ConversationViewer {
     box-shadow:0 2px 9px rgba(0,0,0,.05); }
   .msg { max-width:78%; width:fit-content; margin:9px 0; padding:9px 12px; border-radius:13px; overflow-wrap:break-word; position:relative; }
   .msg.folded { cursor:pointer; margin:4px 0; padding:6px 10px; }
-  .msg.folded .body { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; }
+  .msg.folded .bodywrap { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; }
+  .part-sep { height:1px; background:color-mix(in srgb, var(--line) 55%, transparent); margin:9px -3px; }
+  body[data-density="short"] .msg:not(.folded) .who { cursor:pointer; }
   .msg.user { margin-left:auto; background:var(--user-bub); border-right:3px solid var(--user-strong); border-bottom-right-radius:4px; }
   .msg.assistant { margin-right:auto; background:var(--agent-bub); border-left:3px solid var(--agent-strong); border-bottom-left-radius:4px; }
   .who { font-size:11px; color:var(--mut); margin-bottom:3px; letter-spacing:.02em; font-weight:700; text-transform:uppercase; }
@@ -339,12 +342,17 @@ class ConversationViewer {
   mark.current { background:#ffc85a; box-shadow:0 0 0 2px rgba(217,119,87,.45); }
   .more { color:var(--agent-strong); font-size:12px; cursor:pointer; margin-top:6px; display:block; }
   .more:hover { text-decoration:underline; }
-  .rail { position:absolute; right:13px; top:16px; bottom:72px; width:3px; border-radius:999px;
-    background:var(--rail-track); pointer-events:none; z-index:5; }
-  .rail-fill { position:absolute; top:0; left:0; width:3px; height:var(--rail-top,0%); border-radius:999px;
-    background:var(--rail-fill); opacity:.72; }
-  .rail-thumb { position:absolute; left:-3px; top:var(--rail-top,0%); width:9px; height:46px; margin-top:-23px;
-    border-radius:999px; background:var(--rail-thumb); box-shadow:0 1px 7px rgba(0,0,0,.22); opacity:.82; }
+  .rail { position:absolute; right:6px; top:16px; bottom:72px; width:17px; border-radius:999px;
+    background:transparent; cursor:grab; touch-action:none; z-index:5; }
+  .rail::before { content:''; position:absolute; left:50%; transform:translateX(-50%); top:0; bottom:0;
+    width:3px; border-radius:999px; background:var(--rail-track); }
+  .rail.dragging { cursor:grabbing; }
+  .rail-fill { position:absolute; top:0; left:50%; transform:translateX(-50%); width:3px; height:var(--rail-top,0%);
+    border-radius:999px; background:var(--rail-fill); opacity:.72; pointer-events:none; }
+  .rail-thumb { position:absolute; left:50%; transform:translateX(-50%); top:var(--rail-top,0%); width:9px; height:46px;
+    margin-top:-23px; border-radius:999px; background:var(--rail-thumb); box-shadow:0 1px 7px rgba(0,0,0,.22);
+    opacity:.82; pointer-events:none; }
+  .rail:hover .rail-thumb, .rail.dragging .rail-thumb { width:11px; opacity:1; }
   .pospill { position:absolute; right:28px; top:var(--rail-top,0%); transform:translateY(-50%);
     background:rgba(55,55,55,.94); color:#fff; border-radius:999px; padding:4px 9px; font-size:11px;
     line-height:1.2; white-space:nowrap; pointer-events:none; opacity:0; transition:opacity 160ms ease; z-index:6; }
@@ -408,7 +416,7 @@ class ConversationViewer {
   </div>
   <div class="chatwrap" id="chatwrap">
     <div class="chat" id="chat"></div>
-    <div class="rail" aria-hidden="true"><div class="rail-fill" id="railFill"></div><div class="rail-thumb" id="railThumb"></div></div>
+    <div class="rail" id="rail" role="scrollbar" aria-label="Conversation position" aria-orientation="vertical"><div class="rail-fill" id="railFill"></div><div class="rail-thumb" id="railThumb"></div></div>
     <div class="pospill" id="pospill">msg 1 / ${nMsgs}</div>
     <button class="jump" id="jump" title="Jump to last message">↓</button>
   </div>
@@ -617,9 +625,9 @@ function highlightHtml(html, query, isCurrent) {
   return template.innerHTML;
 }
 
-function renderMessageBody(m, index, isCurrentMatch) {
+function renderMessageBody(m, index, isCurrentMatch, forceFull) {
   let text = m.text || '';
-  const long = text.length > DISPLAY_CAP || text.split('\\n').length > 10;
+  const long = !forceFull && (text.length > DISPLAY_CAP || text.split('\\n').length > 10);
   if (long && !expandedMessages.has(index)) text = text.slice(0, DISPLAY_CAP).trimEnd() + '...';
   let html = renderSimpleMarkdown(text);
   html = highlightHtml(html, $('search').value.trim(), isCurrentMatch);
@@ -652,7 +660,6 @@ function render(keepScroll) {
   $('chipAgent').textContent = l.agent;
   matches = collectMatches();
   currentMatch = Math.min(currentMatch, Math.max(0, matches.length - 1));
-  if (density === 'short' && $('search').value.trim()) matches.forEach(i => unfolded.add(i));
   chat.innerHTML = '';
   const msgs = DATA.messages;
   if (!msgs.some(m => m.role !== 'tool')) {
@@ -668,22 +675,42 @@ function render(keepScroll) {
       '<div class="banner">big session — latest ' + (msgs.length - start) +
       ' rendered for speed · <b id="rall">render all ' + msgs.length + '</b> · export/copy still includes all</div>');
   }
-  let lastDay = null;
-  const frag = [];
+  // One bubble per turn: consecutive assistant messages (tool records between
+  // them don't break the turn) merge into a single bubble; a user message
+  // always starts a new bubble. Turn boundaries come from the ORIGINAL
+  // sequence, so the Me/CLAUDE filter never changes how turns are grouped.
+  const groups = [];
+  const groupOf = {};
   for (let i = start; i < msgs.length; i++) {
     const m = msgs[i];
-    const day = dayOf(m.ts);
     if (m.role === 'tool') continue;
-    if (filter !== 'all' && m.role !== filter) continue;
+    const prev = groups[groups.length - 1];
+    if (prev && prev.role === 'assistant' && m.role === 'assistant') prev.indices.push(i);
+    else groups.push({ role: m.role, indices: [i] });
+    groupOf[i] = groups[groups.length - 1].indices[0];
+  }
+  if (density === 'short' && $('search').value.trim())
+    matches.forEach(i => { if (groupOf[i] !== undefined) unfolded.add(groupOf[i]); });
+  let lastDay = null;
+  const frag = [];
+  for (const g of groups) {
+    if (filter !== 'all' && g.role !== filter) continue;
+    const g0 = g.indices[0];
+    const day = dayOf(msgs[g0].ts);
     if (day && day !== lastDay && filter === 'all') { frag.push('<div class="day">' + day + '</div>'); lastDay = day; }
-    const who = m.role === 'user' ? l.user : l.agent;
-    const body = renderMessageBody(m, i, matches[currentMatch] === i);
-    const icon = m.role === 'user' ? '●' : '✳';
-    const attachments = renderAttachments(m.attachments);
-    const more = body.long ? '<span class="more" data-i="' + i + '">' + (expandedMessages.has(i) ? 'Show less' : 'Read more') + '</span>' : '';
-    const folded = density === 'short' && !unfolded.has(i);
+    const who = g.role === 'user' ? l.user : l.agent;
+    const icon = g.role === 'user' ? '●' : '✳';
+    const folded = density === 'short' && !unfolded.has(g0);
+    const forceFull = density === 'short' && !folded;
+    const parts = g.indices.map(idx => {
+      const m = msgs[idx];
+      const body = renderMessageBody(m, idx, matches[currentMatch] === idx, forceFull);
+      const attachments = renderAttachments(m.attachments);
+      const more = (!folded && body.long) ? '<span class="more" data-i="' + idx + '">' + (expandedMessages.has(idx) ? 'Show less' : 'Read more') + '</span>' : '';
+      return '<div class="part" data-i="' + idx + '">' + attachments + '<div class="body">' + body.html + '</div>' + more + '</div>';
+    }).join('<div class="part-sep"></div>');
     const foldedClass = folded ? ' folded' : '';
-    frag.push('<div class="msg ' + m.role + foldedClass + '" data-i="' + i + '" data-day="' + (day || '') + '"><div class="who"><span class="role-icon">' + icon + '</span>' + escHtml(who) + '</div>' + attachments + '<div class="body">' + body.html + '</div>' + more + '</div>');
+    frag.push('<div class="msg ' + g.role + foldedClass + '" data-i="' + g0 + '" data-day="' + (day || '') + '"><div class="who"><span class="role-icon">' + icon + '</span>' + escHtml(who) + '</div><div class="bodywrap">' + parts + '</div></div>');
   }
   frag.push('<div class="bottom-spacer" aria-hidden="true"></div>');
   chat.insertAdjacentHTML('beforeend', frag.join(''));
@@ -730,7 +757,8 @@ function updateMatches(jump) {
   }
   currentMatch = Math.min(currentMatch, matches.length - 1);
   $('count').textContent = (currentMatch + 1) + ' / ' + matches.length;
-  const target = $('chat').querySelector('.msg[data-i="' + matches[currentMatch] + '"]');
+  const target = $('chat').querySelector('.part[data-i="' + matches[currentMatch] + '"]') ||
+    $('chat').querySelector('.msg[data-i="' + matches[currentMatch] + '"]');
   if (target && jump) target.scrollIntoView({ block:'center', behavior:'smooth' });
 }
 
@@ -847,6 +875,34 @@ document.addEventListener('click', e => {
 });
 $('chat').addEventListener('scroll', updateRail, { passive:true });
 window.addEventListener('resize', updateRail);
+(() => {
+  const rail = $('rail');
+  const chat = $('chat');
+  let dragging = false;
+  const scrollTo = (clientY) => {
+    const r = rail.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (clientY - r.top) / Math.max(1, r.height)));
+    chat.scrollTop = ratio * (chat.scrollHeight - chat.clientHeight);
+  };
+  rail.addEventListener('pointerdown', (e) => {
+    dragging = true;
+    rail.classList.add('dragging');
+    rail.setPointerCapture(e.pointerId);
+    chat.style.scrollBehavior = 'auto';
+    scrollTo(e.clientY);
+    e.preventDefault();
+  });
+  rail.addEventListener('pointermove', (e) => { if (dragging) scrollTo(e.clientY); });
+  const stop = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    rail.classList.remove('dragging');
+    if (e.pointerId !== undefined && rail.hasPointerCapture(e.pointerId)) rail.releasePointerCapture(e.pointerId);
+    chat.style.scrollBehavior = '';
+  };
+  rail.addEventListener('pointerup', stop);
+  rail.addEventListener('pointercancel', stop);
+})();
 render();
 </script>
 </body>

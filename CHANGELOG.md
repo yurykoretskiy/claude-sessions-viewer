@@ -6,6 +6,25 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.14.0] — 2026-07-09
+
+### Changed
+- **One bubble per turn.** Consecutive assistant messages — the progress
+  notes an agent writes between tool calls plus its final answer — now merge
+  into a single bubble with thin separators between the parts, so it is
+  always clear where a message starts and ends. A user message always starts
+  a new bubble. Turn boundaries come from the original transcript order, so
+  the Me/CLAUDE filter never changes how turns are grouped.
+- **One fold, one click.** In Short mode, clicking a folded bubble now shows
+  the entire turn at full length in a single click — the inner "Read more"
+  cap no longer stacks on top of the fold. Clicking the name header folds it
+  back. In Full mode, "Read more" keeps working for very long messages as
+  before.
+- **The position rail is now the scrollbar.** The right-hand rail can be
+  dragged to scroll (with a wider grab area and a grow-on-hover thumb), and
+  the native scrollbar is hidden in the chat area — one affordance instead
+  of two overlapping ones.
+
 ## [1.13.0] — 2026-07-09
 
 ### Changed

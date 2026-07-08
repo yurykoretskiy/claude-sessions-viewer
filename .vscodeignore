@@ -29,3 +29,5 @@ assets/extension-icon.svg
 assets/favicon.svg
 assets/favicon-32.png
 SECURITY-STRATEGY.md
+tools/**
+package-lock.json
