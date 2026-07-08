@@ -1,0 +1,118 @@
+# Backlog
+
+#codex
+
+## Viewer messenger experience
+
+- [ ] Clean chat bubble styling.
+  - Use a right-side green accent stripe for USER bubbles.
+  - Use a left-side coral accent stripe for CLAUDE/agent bubbles.
+  - Use Claude/coral coloring for agent bubbles.
+  - Use a distinct user color, likely a soft messenger-style green rather than
+    a saturated bright green, so long sessions stay readable.
+  - Keep speaker names visible by default because future sessions may include
+    Claude, Codex, or other agents.
+
+- [ ] Viewer names and labels.
+  - Keep `Show names` as a viewer option, but move it out of the main toolbar.
+  - Default `Show names` to on.
+  - Allow configuring the user display name.
+  - Allow configuring the agent display name; default is `Claude`.
+
+- [ ] Messenger Folding v1.
+  - Long messages collapse earlier, around 600-700 characters.
+  - Collapsed bubble shows preview plus `Read more`.
+  - Expanded bubble shows full text plus `Show less`.
+  - Add `Collapse long` and `Expand all`.
+  - Preserve expanded/collapsed state while the webview stays open.
+
+- [ ] Right-side scroll position rail.
+  - Add a passive thin rail on the right side of the conversation.
+  - While scrolling, show a floating marker such as `08 Jul · msg 241 / 273`.
+  - Do not make it draggable and do not replace the native scrollbar.
+  - Hide/fade the marker when the user is not scrolling.
+
+- [ ] Sticky date behavior.
+  - Keep date context visible while scrolling, WhatsApp-style.
+  - Update the date based on the currently visible message.
+  - Avoid large date dividers taking too much vertical space.
+
+- [ ] Code and quote rendering.
+  - Detect fenced code blocks and render them as code blocks.
+  - Add a copy button for code blocks as a later improvement.
+  - Detect quote-style text and render it with a subtle vertical accent.
+  - Use the accent stripe here, not on every USER bubble.
+
+- [ ] Inside-session search.
+  - Add search inside the opened conversation viewer, not as the primary tree
+    workflow.
+  - Hide the search field by default; reveal it only after pressing a larger
+    `Search` control in the main filter/control row.
+  - Search exact text across the current session's USER and CLAUDE messages.
+  - Show result count and current match, for example `3 / 12`.
+  - Provide previous/next match controls.
+  - Highlight matches inside bubbles.
+  - Jump to the matched message and temporarily expand it if it was collapsed.
+  - Allow role scope later: `All`, `Me`, `Claude`.
+  - Keep tree/global search secondary because users often do not remember which
+    session contains the text.
+
+- [ ] Simplify the viewer top controls.
+  - Remove `tools` from the normal viewer UI. If deep transcript inspection is
+    needed, open the raw JSON.
+  - Remove `plain flow` from the normal viewer UI. Export Markdown covers the
+    plain/document need.
+  - Keep role filters visible: `All`, `Me`, `Claude`.
+  - Put `Search` on the same row as `All`, `Me`, `Claude`, `Collapse long`,
+    and `Expand all`, separated by dividers.
+  - Keep the session id visible in the compact metadata line.
+  - Add a copy button that copies the full raw JSON session path.
+  - Do not show the full session id/raw JSON details block by default; use the
+    visible session id plus copy/open actions.
+  - Keep the run/resume control visually neutral. The play symbol is fine, but
+    it should read as `resume in Claude terminal`, not as the primary action.
+  - Use a names-specific control such as `Aa` instead of a generic settings
+    gear when the menu only controls speaker names/labels.
+
+## Tree and navigation
+
+- [ ] Folder count display.
+  - Change folder counts from `claude-sessions-viewer 4` to
+    `claude-sessions-viewer (4)`.
+
+- [ ] Revealed session marker.
+  - Replace the old timeline/grouping toolbar idea with a small marker for the
+    currently revealed/selected session.
+  - Prefer a row-level marker in the tree, not another toolbar button.
+  - Keep the current session visually findable.
+
+- [ ] Collapse folders should keep the revealed session visible.
+  - If the user reveals the current session, then presses collapse/expand, the
+    extension should not lose that revealed context.
+  - Collapse all should probably collapse everything except the folder
+    containing the revealed session.
+
+- [ ] Timeline / flat history mode redesign.
+  - Keep disabled by default for now.
+  - Revisit later as either a proper webview history mode or a clearer
+    two-column mockup before TreeView implementation.
+  - Do not ship the unclear current flat timeline as default.
+
+## Marketplace polish
+
+- [ ] Marketplace/readme polish.
+  - Keep positioning: read-only, local, safe, dependency-free.
+  - Make screenshots reflect the final messenger viewer, not the current rough
+    state.
+  - Ensure images render inside VS Code extension details.
+
+## Suggested implementation order
+
+1. Clean bubble styling and remove the default USER stripe.
+2. Messenger Folding v1.
+3. Inside-session search.
+4. Scroll rail plus scroll position marker.
+5. Folder count `(N)`.
+6. Revealed-session marker and collapse behavior.
+7. Code/quote rendering.
+8. Marketplace screenshot/readme refresh.

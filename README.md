@@ -1,31 +1,31 @@
 # Claude Sessions Viewer
 
-**Every Claude Code session on your machine — organized by project folder,
-readable like a chat, one click away. A VS Code extension.**
+**Read your Claude Code sessions like chat conversations: locate the one you're
+in, review any of them, export. Read-only, local, zero dependencies.**
 
-![Claude Sessions Viewer](https://raw.githubusercontent.com/yurykoretskiy/claude-sessions-viewer/master/assets/screenshots/hero-dark.png)
+![Claude Sessions Viewer](assets/screenshots/hero-dark.png)
 
-Claude Code stores every conversation on disk, but gives you no way to see
-them across projects — sessions pile up, get misfiled under the workspace
-root, and auto-delete after 30 days. This extension turns that hidden pile
-into a browsable map.
+Claude Code stores every conversation on disk. This extension turns that local
+history into a safe review surface inside VS Code: a project/session tree,
+chat-style reading pane, current-session reveal, copy-clean export, and explicit
+resume buttons. It reads `~/.claude`; it does not edit or delete transcripts.
 
 ## Features
 
-- **Two tree orders** — folder index or chronological feed. Folder mode shows
-  folders A-Z, with each folder's sessions newest first. Chronological mode
-  shows newest sessions first, still wrapped by folder, so a folder can appear
-  more than once; visible `[age]` labels show when each row was last updated.
+- **Folder-first session tree** — folders A-Z, with each folder's sessions
+  newest first. Visible `[age]` labels show when each row was last updated.
+  The experimental flat timeline is hidden behind a setting while its layout is
+  being redesigned.
 - **Working-folder grouping** — sessions are grouped by the real folder they
   ran in (the transcript's recorded `cwd`). No current-workspace guessing and
   no content-based re-filing.
-- **Conversation viewer** — click a session and read it like a chat: your
-  messages right, Claude's left, tool noise hidden (optional markers),
-  opens at the last message. Read-only until you press the accent resume
-  button in the viewer.
-- **Filters & modes** — All / you / Claude; chat bubbles or plain
-  copy-clean flow; names on/off for sharing; one-click copy of the entire
-  conversation; export to Markdown (drop straight into an Obsidian vault).
+- **Messenger-style conversation viewer** — click a session and read it like a
+  chat: your messages right with a green edge, Claude's left with a coral
+  edge, names visible by default, tool noise hidden, and the viewer opens at
+  the last message.
+- **Fast review controls** — All / you / Claude filters, collapsible long
+  messages, inside-session search, Markdown/code/table rendering, copy raw
+  session path, copy conversation, and export to Markdown.
 - **Launchers** — right-click any folder in the Explorer: *New session
   here* (terminal) or *New window session here* (official Claude Code
   panel). Resume stays explicit inside the review pane.
@@ -40,11 +40,11 @@ into a browsable map.
 
 **Reveal the session you're in right now** — ✳ on the panel tab → highlighted in the tree:
 
-![Reveal current session](https://raw.githubusercontent.com/yurykoretskiy/claude-sessions-viewer/master/assets/screenshots/reveal-current.png)
+![Reveal current session](assets/screenshots/reveal-current.png)
 
-| Light theme | Copy-clean plain flow | Filter: your messages |
+| Light theme | Messenger review | Filter: your messages |
 | --- | --- | --- |
-| ![Light](https://raw.githubusercontent.com/yurykoretskiy/claude-sessions-viewer/master/assets/screenshots/viewer-light.png) | ![Plain](https://raw.githubusercontent.com/yurykoretskiy/claude-sessions-viewer/master/assets/screenshots/plain-mode.png) | ![Filter](https://raw.githubusercontent.com/yurykoretskiy/claude-sessions-viewer/master/assets/screenshots/filter-user.png) |
+| ![Light](assets/screenshots/viewer-light.png) | ![Viewer](assets/screenshots/plain-mode.png) | ![Filter](assets/screenshots/filter-user.png) |
 
 ## How it works
 
@@ -53,9 +53,8 @@ into a browsable map.
   files — it never runs Claude, never phones home, and needs no configuration.
 - **How grouping works.** Each transcript records the folder the session was
   started in. Folder mode sorts those folders A-Z and keeps each folder's
-  sessions newest first. Chronological mode sorts sessions newest first and
-  wraps them in folder rows, so the same folder can appear multiple times.
-  Chronological rows include visible `[age]` labels such as `[4m]` or `[2d]`.
+  sessions newest first. The experimental Session Timeline, when enabled,
+  lists sessions as a flat newest-first history across folders.
   A folder marked `gone` no longer exists on disk — its sessions are kept as
   browsable history.
 - **When the list updates.** There is no background watcher. The tree
@@ -145,8 +144,16 @@ session-level browsing.
   for tree-only reveal.
 - `claudeSessionsViewer.liveRefresh.enabled` — keep an opened viewer updated
   while the transcript changes. Off by default.
+- `claudeSessionsViewer.userLabel` — label shown on your bubbles and in
+  copy/export output.
+- `claudeSessionsViewer.agentLabel` — label shown on assistant bubbles and in
+  copy/export output. Defaults to `CLAUDE`.
+- `claudeSessionsViewer.showNames` — show speaker names inside bubbles. On by
+  default.
 - `claudeSessionsViewer.promptChildren.enabled` — show prompt/message rows
   under sessions. Off by default.
+- `claudeSessionsViewer.timeline.enabled` — show the experimental flat session
+  timeline toggle. Off by default until the layout is clearer.
 
 ## Privacy & how it works
 

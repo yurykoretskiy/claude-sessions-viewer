@@ -6,6 +6,69 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.11.0] — 2026-07-08
+
+### Added
+- **Messenger-style conversation viewer.** The reader now focuses on fast
+  review: user bubbles on the right with a green edge, Claude bubbles on the
+  left with a coral edge, names visible by default, and long messages
+  collapsible with **Read more** / **Show less**.
+- **Inside-session search.** Search is hidden until requested from the main
+  control row, then highlights matches, shows match count, and jumps
+  previous/next inside the opened session.
+- **Markdown-aware message rendering.** Viewer bubbles render compact
+  headings, lists, inline code, fenced code blocks with copy buttons, quote
+  blocks, and Markdown tables without leaving the chat layout.
+- **Session orientation controls.** The viewer now includes a passive
+  right-side scroll position rail, a sticky date context, **Collapse long** /
+  **Expand all**, and a copy button for the raw session JSONL path.
+- **Configurable speaker labels.** `userLabel`, `agentLabel`, and `showNames`
+  now drive both the viewer and copy/export output.
+
+### Changed
+- Removed the normal-reader **plain flow** and **tools** toggles. Raw JSON and
+  Markdown export cover those deeper/debugging needs while the viewer stays a
+  messenger-style reader.
+- The resume control is visually quieter and labeled as resuming in a Claude
+  terminal so it does not look like the primary review action.
+- Folder counts now render as `(N)` instead of a bare number.
+
+## [1.10.4] — 2026-07-08
+
+### Changed
+- Removed the decorative spark marker from the conversation viewer header. It
+  was not an action and duplicated the title/toolbar semantics.
+
+## [1.10.3] — 2026-07-08
+
+### Changed
+- **The flat Session Timeline is now experimental and hidden by default.** It
+  has real value for cross-project work history, but VS Code TreeView cannot
+  render proper fixed columns or two-line rows, so the current title + folder
+  presentation is not clear enough for the default/published experience.
+  Folders A-Z remains the normal view; the timeline can still be enabled from
+  Settings while a better two-column layout is designed.
+
+## [1.10.2] — 2026-07-08
+
+### Fixed
+- **Extension details now lead with the safety positioning.** The manifest
+  description now says the extension is read-only, local, and dependency-free
+  instead of emphasizing folder launchers.
+- **README screenshots now render from the packaged extension.** Screenshot
+  links are package-relative paths instead of remote raw GitHub URLs, so the
+  VS Code extension details page can render them from the installed `.vsix`.
+
+## [1.10.1] — 2026-07-08
+
+### Fixed
+- **Timeline rows now keep the folder visible.** Long session titles are
+  capped in the flat timeline so the right-side folder name does not get
+  pushed out of view; the full title remains in the tooltip.
+- **The view header now names the active mode.** The tree title switches
+  between **Sessions by Folder** and **Session Timeline** instead of showing
+  the static manifest name in both modes.
+
 ## [1.10.0] — 2026-07-08
 
 ### Changed

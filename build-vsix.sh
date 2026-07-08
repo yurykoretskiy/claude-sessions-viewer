@@ -17,7 +17,7 @@ if [ ! -x "$VSCE" ]; then
   npm install --no-save @vscode/vsce >/dev/null 2>&1
 fi
 
-"$VSCE" package -o "$OUT" --no-git-tag-version --no-update-package-json
+"$VSCE" package -o "$OUT" --no-git-tag-version --no-update-package-json --no-rewrite-relative-links
 
 echo "Built $OUT"
 if [ "${1:-}" = "--install" ]; then

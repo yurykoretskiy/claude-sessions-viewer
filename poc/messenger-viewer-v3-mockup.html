@@ -1,0 +1,857 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Claude Sessions Viewer - Messenger Viewer v3 Mockup</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f7f7;
+      --panel: #ffffff;
+      --line: #dddddd;
+      --fg: #303030;
+      --muted: #707070;
+      --agent: #f3d6cc;
+      --agent-strong: #d97757;
+      --user: #dff3d7;
+      --user-strong: #4f9f62;
+      --chip: #f2f2f2;
+      --search: #ffe98f;
+      --code-bg: #282828;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--fg);
+      font: 14px/1.48 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: flex;
+      justify-content: center;
+    }
+
+    .viewer {
+      width: min(820px, 100vw);
+      height: 100vh;
+      background: var(--panel);
+      border-left: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    .head {
+      padding: 10px 16px 8px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.97);
+      backdrop-filter: blur(10px);
+      z-index: 8;
+    }
+
+    .top {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .menu {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font-size: 18px;
+      padding: 2px 3px;
+      cursor: pointer;
+    }
+
+    .title {
+      min-width: 0;
+      flex: 1;
+      font-size: 17px;
+      font-weight: 680;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 7px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .icon:hover { background: var(--chip); color: var(--fg); }
+
+    .icon.terminal {
+      width: 38px;
+      border-color: var(--line);
+      font: 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .meta {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .settings {
+      position: absolute;
+      top: 45px;
+      right: 14px;
+      width: 260px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14);
+      z-index: 20;
+      display: none;
+      font-size: 12px;
+    }
+
+    .settings.open { display: block; }
+
+    .settings .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 8px 0;
+    }
+
+    .settings label { color: var(--muted); min-width: 72px; }
+
+    .settings input[type="text"] {
+      min-width: 0;
+      flex: 1;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 4px 7px;
+      font: inherit;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.96);
+      flex-wrap: wrap;
+      z-index: 4;
+    }
+
+    .chip {
+      border: 1px solid #cccccc;
+      border-radius: 999px;
+      padding: 2px 12px;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .chip.on {
+      color: var(--fg);
+      background: #d8c7df;
+      border-color: #8d7c95;
+    }
+
+    .chip.search-chip {
+      padding-inline: 15px;
+      font-weight: 650;
+      border-color: color-mix(in srgb, var(--agent-strong) 35%, #cccccc);
+    }
+
+    .chip.search-chip.open {
+      color: var(--fg);
+      background: color-mix(in srgb, var(--agent-strong) 14%, #ffffff);
+      border-color: var(--agent-strong);
+    }
+
+    .spacer {
+      width: 1px;
+      height: 17px;
+      background: var(--line);
+      margin: 0 2px;
+    }
+
+    .searchbar {
+      display: none;
+      grid-template-columns: 1fr auto auto auto;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--line);
+      background: #fff;
+      z-index: 4;
+    }
+
+    .searchbar.open { display: grid; }
+
+    .searchbox {
+      height: 28px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 0 11px;
+      font: inherit;
+      color: var(--fg);
+      background: #ffffff;
+    }
+
+    .count {
+      color: var(--muted);
+      font-size: 12px;
+      min-width: 46px;
+      text-align: right;
+    }
+
+    .tiny {
+      width: 26px;
+      height: 26px;
+      border-radius: 7px;
+      border: 1px solid var(--line);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .chat-wrap {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .chat {
+      height: 100%;
+      overflow-y: auto;
+      padding: 16px 54px 18px 18px;
+      scroll-behavior: smooth;
+    }
+
+    .day {
+      position: sticky;
+      top: 8px;
+      z-index: 2;
+      width: max-content;
+      margin: 12px auto;
+      padding: 3px 11px;
+      border-radius: 999px;
+      background: rgba(245, 245, 245, 0.96);
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 11px;
+      box-shadow: 0 2px 9px rgba(0, 0, 0, 0.05);
+    }
+
+    .msg {
+      max-width: 78%;
+      width: fit-content;
+      margin: 9px 0;
+      padding: 9px 12px;
+      border-radius: 13px;
+      overflow-wrap: break-word;
+      position: relative;
+    }
+
+    .msg.user {
+      margin-left: auto;
+      background: var(--user);
+      border-right: 3px solid var(--user-strong);
+      border-bottom-right-radius: 4px;
+    }
+
+    .msg.assistant {
+      margin-right: auto;
+      background: var(--agent);
+      border-left: 3px solid var(--agent-strong);
+      border-bottom-left-radius: 4px;
+    }
+
+    .who {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      margin-bottom: 3px;
+      text-transform: uppercase;
+    }
+
+    body.hide-names .who { display: none; }
+
+    .msg p {
+      margin: 0 0 7px;
+      white-space: pre-wrap;
+    }
+
+    .msg p:last-child { margin-bottom: 0; }
+
+    .msg h3 {
+      margin: 4px 0 6px;
+      font-size: 15px;
+      line-height: 1.25;
+    }
+
+    .msg ul, .msg ol {
+      margin: 6px 0 6px 19px;
+      padding: 0;
+    }
+
+    code.inline {
+      background: rgba(255, 255, 255, 0.55);
+      border-radius: 4px;
+      padding: 1px 4px;
+      color: #9a3727;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+    }
+
+    .quote {
+      border-left: 3px solid var(--agent-strong);
+      background: rgba(255, 255, 255, 0.45);
+      padding: 6px 8px;
+      border-radius: 6px;
+      margin: 7px 0;
+      color: #505050;
+    }
+
+    pre {
+      margin: 8px 0;
+      padding: 9px 10px;
+      border-radius: 8px;
+      background: var(--code-bg);
+      color: #eeeeee;
+      overflow-x: auto;
+      font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .code-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      color: #b9b9b9;
+      font-size: 11px;
+      margin-bottom: 5px;
+    }
+
+    .copy-code {
+      border: 1px solid #555;
+      border-radius: 5px;
+      background: transparent;
+      color: #dcdcdc;
+      font: inherit;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    .table-wrap {
+      max-width: 100%;
+      overflow-x: auto;
+      margin: 8px 0;
+      border: 1px solid rgba(0, 0, 0, 0.16);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.45);
+    }
+
+    table {
+      border-collapse: collapse;
+      min-width: 470px;
+      width: 100%;
+      font-size: 12px;
+    }
+
+    th, td {
+      border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+      padding: 5px 7px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: rgba(0, 0, 0, 0.05);
+      font-weight: 700;
+    }
+
+    mark {
+      background: var(--search);
+      color: inherit;
+      border-radius: 3px;
+      padding: 0 1px;
+      box-shadow: 0 0 0 1px rgba(217, 151, 39, 0.22);
+    }
+
+    mark.current {
+      background: #ffc85a;
+      box-shadow: 0 0 0 2px rgba(217, 119, 87, 0.45);
+    }
+
+    .read-more {
+      display: block;
+      margin-top: 6px;
+      border: 0;
+      padding: 0;
+      background: transparent;
+      color: var(--agent-strong);
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .read-more:hover { text-decoration: underline; }
+
+    .rail {
+      position: absolute;
+      right: 13px;
+      top: 16px;
+      bottom: 18px;
+      width: 3px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.08);
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .rail-fill {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 3px;
+      height: var(--rail-top, 0%);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--agent-strong) 55%, transparent);
+      opacity: 0.7;
+    }
+
+    .rail-thumb {
+      position: absolute;
+      left: -3px;
+      top: var(--rail-top, 0%);
+      width: 9px;
+      height: 46px;
+      margin-top: -23px;
+      border-radius: 999px;
+      background: var(--agent-strong);
+      box-shadow: 0 1px 7px rgba(0, 0, 0, 0.22);
+      opacity: 0.82;
+    }
+
+    .position-pill {
+      position: absolute;
+      right: 28px;
+      top: var(--rail-top, 0%);
+      transform: translateY(-50%);
+      background: rgba(55, 55, 55, 0.94);
+      color: #ffffff;
+      border-radius: 999px;
+      padding: 4px 9px;
+      font-size: 11px;
+      line-height: 1.2;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 160ms ease;
+      z-index: 6;
+    }
+
+    .chat-wrap.scrolling .position-pill,
+    .chat-wrap:hover .position-pill {
+      opacity: 1;
+    }
+
+    .jump {
+      position: absolute;
+      right: 20px;
+      bottom: 16px;
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.96);
+      color: var(--muted);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+      cursor: pointer;
+      z-index: 7;
+    }
+
+    @media (max-width: 620px) {
+      .chat { padding-right: 46px; }
+      .msg { max-width: 86%; }
+      .title { font-size: 15px; }
+      .controls { gap: 5px; }
+      .searchbar { grid-template-columns: 1fr auto auto; }
+      .searchbar .tiny:last-child { grid-column: 3; }
+    }
+  </style>
+</head>
+<body>
+  <main class="viewer">
+    <header class="head">
+      <div class="top">
+        <button class="menu" title="Navigation">=</button>
+        <div class="title">Reinstall extension after uninstall</div>
+        <div class="actions">
+          <button class="icon terminal" title="Resume in Claude terminal">▶_</button>
+          <button class="icon" id="copySessionPath" title="Copy full session path">⧉</button>
+          <button class="icon" title="Export Markdown">⬇</button>
+          <button class="icon" title="Open raw JSON">{}</button>
+          <button class="icon" id="settingsBtn" title="Names">Aa</button>
+        </div>
+      </div>
+      <div class="meta">claude-sessions-viewer · 273 messages · aecfe794-a30f-42d5-b1b2-850b49b087fb · 06 Jul 2026 17:39 -> 08 Jul 2026 13:37</div>
+      <div class="settings" id="settings">
+        <div class="row"><label><input type="checkbox" id="showNames" checked> Show names</label></div>
+        <div class="row"><label for="userName">You</label><input id="userName" type="text" value="Yury"></div>
+        <div class="row"><label for="agentName">Agent</label><input id="agentName" type="text" value="Claude"></div>
+      </div>
+    </header>
+
+    <section class="controls">
+      <button class="chip on" data-role="all">All</button>
+      <button class="chip" data-role="user">Me</button>
+      <button class="chip" data-role="assistant">Claude</button>
+      <span class="spacer"></span>
+      <button class="chip" id="collapseAll">Collapse long</button>
+      <button class="chip" id="expandAll">Expand all</button>
+      <span class="spacer"></span>
+      <button class="chip search-chip" id="searchToggle">Search</button>
+    </section>
+
+    <section class="searchbar" id="searchbar">
+      <input class="searchbox" id="search" placeholder="Search inside this session">
+      <div class="count" id="count">0 / 0</div>
+      <button class="tiny" id="prev" title="Previous match">↑</button>
+      <button class="tiny" id="next" title="Next match">↓</button>
+      <button class="tiny" id="clear" title="Close search">x</button>
+    </section>
+
+    <section class="chat-wrap" id="wrap">
+      <div class="chat" id="chat"></div>
+      <div class="rail" aria-hidden="true">
+        <div class="rail-fill" id="railFill"></div>
+        <div class="rail-thumb" id="railThumb"></div>
+      </div>
+      <div class="position-pill" id="posPill">msg 1 / 273</div>
+      <button class="jump" id="jump" title="Jump to latest">↓</button>
+    </section>
+  </main>
+
+  <script>
+    const chat = document.getElementById('chat');
+    const wrap = document.getElementById('wrap');
+    const pill = document.getElementById('posPill');
+    const railFill = document.getElementById('railFill');
+    const railThumb = document.getElementById('railThumb');
+    const searchInput = document.getElementById('search');
+    const searchbar = document.getElementById('searchbar');
+    const count = document.getElementById('count');
+    const DISPLAY_CAP = 700;
+    const total = 273;
+    const expanded = new Set([12, 18, 24]);
+    let currentRole = 'all';
+    let matches = [];
+    let currentMatch = 0;
+    let scrollTimer = 0;
+
+    const examples = [
+      {
+        role: 'user',
+        day: '06 JUL 2026',
+        html: '<p>Please look at this session and help me understand what changed.</p>'
+      },
+      {
+        role: 'assistant',
+        day: '06 JUL 2026',
+        html: '<h3>What changed</h3><p>The current viewer is becoming a messenger-style reader: the tree helps you pick a session, then this view helps you understand the conversation quickly.</p><ul><li>Long messages can collapse.</li><li>Search is inside the session.</li><li>Raw JSON remains available for deeper inspection.</li></ul>'
+      },
+      {
+        role: 'user',
+        day: '06 JUL 2026',
+        html: '<p>I need to find whether I pasted something by mistake. Search inside the session matters more than global search.</p>'
+      },
+      {
+        role: 'assistant',
+        day: '06 JUL 2026',
+        html: '<p>That is the right product shape. Global search is vague because the user rarely remembers which session contains the text. Inside-session search is precise.</p><div class="quote">Search should be hidden by default and opened only when needed, so it does not take vertical space during normal reading.</div>'
+      },
+      {
+        role: 'assistant',
+        day: '07 JUL 2026',
+        html: '<p>Inline values such as <code class="inline">aecfe794-a30f-42d5-b1b2-850b49b087fb</code>, <code class="inline">cli</code>, and <code class="inline">claude-vscode</code> should render as inline code, not loud warning labels.</p>'
+      },
+      {
+        role: 'assistant',
+        day: '07 JUL 2026',
+        html: '<p>Code output should stay readable inside the bubble:</p><pre><div class="code-label"><span>js</span><button class="copy-code">copy</button></div><code>function isLongMessage(message) {\n  return message.text.length > 700 ||\n    message.text.split("\\n").length > 8;\n}</code></pre>'
+      },
+      {
+        role: 'assistant',
+        day: '07 JUL 2026',
+        html: '<p>Tables should render as real tables and scroll horizontally if the bubble is narrow:</p><div class="table-wrap"><table><thead><tr><th>Area</th><th>Decision</th><th>Why</th></tr></thead><tbody><tr><td>Tools</td><td>Remove from top UI</td><td>Raw JSON is enough for deep debug.</td></tr><tr><td>Plain flow</td><td>Remove</td><td>Export Markdown covers document/plain text needs.</td></tr><tr><td>Search</td><td>Add inside session</td><td>Best way to find exact prompts or pasted text.</td></tr></tbody></table></div>'
+      },
+      {
+        role: 'user',
+        day: '07 JUL 2026',
+        html: '<p>For colors, I expect Claude to feel coral/orange. For me, try a different color so the sides are easy to distinguish.</p>'
+      },
+      {
+        role: 'assistant',
+        day: '07 JUL 2026',
+        html: '<p>This mockup uses coral for Claude and soft messenger green for the user. I would avoid neon green: it is noticeable, but it gets tiring across long transcripts.</p>'
+      },
+      {
+        role: 'user',
+        day: '08 JUL 2026',
+        html: '<p>Keep names visible by default. Later this might include Claude, Codex, or another agent.</p>'
+      },
+      {
+        role: 'assistant',
+        day: '08 JUL 2026',
+        html: '<p>Names are visible by default here. The settings menu allows hiding names and changing the user/agent labels without putting those controls in the main toolbar.</p>'
+      },
+      {
+        role: 'assistant',
+        day: '08 JUL 2026',
+        long: true,
+        html: '<p>This is a long response example. The point is to test the folding behavior without making the whole session unreadable. A real Claude answer can contain diagnosis, numbered decisions, code, and caveats in one message.</p><p>The collapsed version should show enough context to identify the message, but not so much that the chat becomes a document. When expanded, the full content appears in place and can be collapsed again.</p><p>For a messenger-like viewer, the stable behaviors are: open near the latest message, keep bubbles compact, show dates only as context, and make search available without permanently occupying the reading area.</p>'
+      }
+    ];
+
+    const messages = [];
+    for (let i = 0; i < total; i++) {
+      const sample = examples[i % examples.length];
+      messages.push({ ...sample, i });
+    }
+
+    function visibleText(html) {
+      const div = document.createElement('div');
+      div.innerHTML = html;
+      return div.textContent || '';
+    }
+
+    function clampHtml(html, limit) {
+      const text = visibleText(html);
+      if (text.length <= limit) return html;
+      return '<p>' + text.slice(0, limit).trimEnd() + '...</p>';
+    }
+
+    function highlightHtml(html, query, current) {
+      if (!query) return html;
+      const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      let usedCurrent = false;
+      return html.replace(new RegExp('(' + escaped + ')', 'gi'), (m) => {
+        const cls = current && !usedCurrent ? ' class="current"' : '';
+        usedCurrent = true;
+        return '<mark' + cls + '>' + m + '</mark>';
+      });
+    }
+
+    function render() {
+      let lastDay = '';
+      chat.innerHTML = '';
+      const frag = document.createDocumentFragment();
+      const query = searchInput.value.trim();
+
+      for (const m of messages) {
+        if (currentRole !== 'all' && m.role !== currentRole) continue;
+        if (m.day !== lastDay) {
+          const day = document.createElement('div');
+          day.className = 'day';
+          day.textContent = m.day;
+          frag.appendChild(day);
+          lastDay = m.day;
+        }
+
+        const bubble = document.createElement('div');
+        bubble.className = 'msg ' + m.role;
+        bubble.dataset.index = m.i;
+        bubble.dataset.day = m.day;
+
+        const who = document.createElement('div');
+        who.className = 'who';
+        who.textContent = m.role === 'user'
+          ? document.getElementById('userName').value || 'User'
+          : document.getElementById('agentName').value || 'Claude';
+        bubble.appendChild(who);
+
+        const long = m.long || visibleText(m.html).length > DISPLAY_CAP;
+        const open = expanded.has(m.i);
+        const body = document.createElement('div');
+        const isCurrent = matches[currentMatch] === m.i;
+        body.innerHTML = highlightHtml(long && !open ? clampHtml(m.html, DISPLAY_CAP) : m.html, query, isCurrent);
+        bubble.appendChild(body);
+
+        if (long) {
+          const more = document.createElement('button');
+          more.className = 'read-more';
+          more.textContent = open ? 'Show less' : 'Read more';
+          more.onclick = () => {
+            if (expanded.has(m.i)) expanded.delete(m.i);
+            else expanded.add(m.i);
+            const oldTop = chat.scrollTop;
+            render();
+            chat.scrollTop = oldTop;
+            updateRail();
+          };
+          bubble.appendChild(more);
+        }
+
+        frag.appendChild(bubble);
+      }
+
+      chat.appendChild(frag);
+      refreshMatches(false);
+    }
+
+    function refreshMatches(jump) {
+      const query = searchInput.value.trim().toLowerCase();
+      matches = [];
+      if (query) {
+        for (const m of messages) {
+          if (currentRole !== 'all' && m.role !== currentRole) continue;
+          if (visibleText(m.html).toLowerCase().includes(query)) matches.push(m.i);
+        }
+      }
+      if (!matches.length) {
+        currentMatch = 0;
+        count.textContent = query ? '0 / 0' : '0 / 0';
+        return;
+      }
+      currentMatch = Math.min(currentMatch, matches.length - 1);
+      count.textContent = (currentMatch + 1) + ' / ' + matches.length;
+      const target = chat.querySelector('.msg[data-index="' + matches[currentMatch] + '"]');
+      if (target && jump) target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+
+    function currentMessage() {
+      const bubbles = Array.from(chat.querySelectorAll('.msg'));
+      const target = chat.getBoundingClientRect().top + chat.clientHeight * 0.42;
+      let current = bubbles[0];
+      for (const bubble of bubbles) {
+        if (bubble.getBoundingClientRect().top <= target) current = bubble;
+        else break;
+      }
+      return current;
+    }
+
+    function updateRail() {
+      const max = Math.max(1, chat.scrollHeight - chat.clientHeight);
+      const progress = Math.min(1, Math.max(0, chat.scrollTop / max));
+      const top = (progress * 100).toFixed(2) + '%';
+      railFill.style.setProperty('--rail-top', top);
+      railThumb.style.setProperty('--rail-top', top);
+      pill.style.setProperty('--rail-top', top);
+
+      const current = currentMessage();
+      const index = current ? Number(current.dataset.index) + 1 : 1;
+      const day = current ? current.dataset.day.replace(' JUL ', ' Jul ') : '';
+      pill.textContent = day + ' · msg ' + index + ' / ' + total;
+
+      wrap.classList.add('scrolling');
+      clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(() => wrap.classList.remove('scrolling'), 850);
+    }
+
+    document.getElementById('searchToggle').onclick = () => {
+      searchbar.classList.toggle('open');
+      document.getElementById('searchToggle').classList.toggle('open', searchbar.classList.contains('open'));
+      if (searchbar.classList.contains('open')) searchInput.focus();
+    };
+    document.getElementById('copySessionPath').onclick = async () => {
+      const value = '/Users/yurikoretskiy/.claude/projects/-Users-yurikoretskiy-yury-vibe-coding-claude-sessions-viewer/aecfe794-a30f-42d5-b1b2-850b49b087fb.jsonl';
+      try { await navigator.clipboard.writeText(value); } catch {}
+    };
+    document.getElementById('settingsBtn').onclick = () => {
+      document.getElementById('settings').classList.toggle('open');
+    };
+    document.getElementById('showNames').onchange = (e) => {
+      document.body.classList.toggle('hide-names', !e.target.checked);
+    };
+    document.getElementById('userName').oninput = render;
+    document.getElementById('agentName').oninput = render;
+
+    document.querySelectorAll('[data-role]').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('[data-role]').forEach(b => b.classList.remove('on'));
+        btn.classList.add('on');
+        currentRole = btn.dataset.role;
+        currentMatch = 0;
+        render();
+        updateRail();
+      };
+    });
+
+    document.getElementById('collapseAll').onclick = () => {
+      expanded.clear();
+      const oldTop = chat.scrollTop;
+      render();
+      chat.scrollTop = oldTop;
+      updateRail();
+    };
+
+    document.getElementById('expandAll').onclick = () => {
+      for (const m of messages) if (m.long || visibleText(m.html).length > DISPLAY_CAP) expanded.add(m.i);
+      const oldTop = chat.scrollTop;
+      render();
+      chat.scrollTop = oldTop;
+      updateRail();
+    };
+
+    searchInput.oninput = () => {
+      currentMatch = 0;
+      render();
+    };
+    document.getElementById('next').onclick = () => {
+      if (!matches.length) return;
+      currentMatch = (currentMatch + 1) % matches.length;
+      render();
+      refreshMatches(true);
+    };
+    document.getElementById('prev').onclick = () => {
+      if (!matches.length) return;
+      currentMatch = (currentMatch - 1 + matches.length) % matches.length;
+      render();
+      refreshMatches(true);
+    };
+    document.getElementById('clear').onclick = () => {
+      if (searchInput.value) {
+        searchInput.value = '';
+        render();
+        searchInput.focus();
+      } else {
+        searchbar.classList.remove('open');
+        document.getElementById('searchToggle').classList.remove('open');
+      }
+    };
+    document.getElementById('jump').onclick = () => {
+      chat.scrollTop = chat.scrollHeight;
+      updateRail();
+    };
+
+    chat.addEventListener('scroll', updateRail, { passive: true });
+    window.addEventListener('resize', updateRail);
+
+    render();
+    chat.scrollTop = chat.scrollHeight;
+    updateRail();
+  </script>
+</body>
+</html>

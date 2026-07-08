@@ -1,5 +1,5 @@
-// Conversation viewer webview — renders a session read-only, exactly per the
-// approved POC v3 design. Nothing runs unless the ▶ button is pressed.
+// Conversation viewer webview. Read-only by default; the only action that
+// runs anything is the explicit resume-in-terminal button.
 
 const vscode = require('vscode');
 const path = require('path');
@@ -36,6 +36,8 @@ class ConversationViewer {
     return {
       theme: c.get('theme', 'system'),
       userLabel: c.get('userLabel', 'USER'),
+      agentLabel: c.get('agentLabel', 'CLAUDE'),
+      showNames: c.get('showNames', true),
       liveRefresh: c.get('liveRefresh.enabled', false),
     };
   }
@@ -63,8 +65,6 @@ class ConversationViewer {
       const fsMod = require('fs');
       let listener = null;
       if (this.config.liveRefresh) {
-        // Optional live refresh: while the session keeps writing, re-extract
-        // and push updated messages into the webview.
         let refreshing = false;
         listener = async () => {
           if (refreshing) return;
@@ -97,19 +97,18 @@ class ConversationViewer {
 
   async onMessage(entry, msg) {
     const { session, convo, title, folder } = entry;
+    const cfg = this.config;
     const textOpts = (m) => ({
       title,
       folder,
-      userLabel: this.config.userLabel,
+      userLabel: m.userLabel || cfg.userLabel,
+      agentLabel: m.agentLabel || cfg.agentLabel,
       names: m.names !== false,
       filter: m.filter || 'all',
-      withTools: !!m.tools,
+      withTools: false,
     });
     switch (msg.type) {
       case 'resume': {
-        // The id becomes part of a shell command; only ever pass a strict
-        // UUID through (ids come from filenames, which an attacker could
-        // craft in a shared session pack).
         if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session.id)) {
           vscode.window.showErrorMessage('Claude Sessions: refusing to resume — session id is not a valid UUID.');
           break;
@@ -126,6 +125,10 @@ class ConversationViewer {
         );
         break;
       }
+      case 'copyPath':
+        await vscode.env.clipboard.writeText(session.file);
+        vscode.window.showInformationMessage('Copied raw session JSONL path.');
+        break;
       case 'export': {
         const uri = await vscode.window.showSaveDialog({
           defaultUri: vscode.Uri.file(path.join(os.homedir(), `${title.replace(/[/\\:]/g, '-').slice(0, 60)}.md`)),
@@ -146,6 +149,10 @@ class ConversationViewer {
         if (msg.theme) await c.update('theme', msg.theme, vscode.ConfigurationTarget.Global);
         if (msg.userLabel !== undefined)
           await c.update('userLabel', msg.userLabel || 'USER', vscode.ConfigurationTarget.Global);
+        if (msg.agentLabel !== undefined)
+          await c.update('agentLabel', msg.agentLabel || 'CLAUDE', vscode.ConfigurationTarget.Global);
+        if (msg.showNames !== undefined)
+          await c.update('showNames', !!msg.showNames, vscode.ConfigurationTarget.Global);
         break;
       }
     }
@@ -158,11 +165,15 @@ class ConversationViewer {
     const data = JSON.stringify({
       messages: convo.messages,
       userLabel: cfg.userLabel,
+      agentLabel: cfg.agentLabel,
+      showNames: cfg.showNames,
       theme: cfg.theme,
       window: RENDER_WINDOW,
+      sessionId: session.id,
+      rawPath: session.file,
+      cwd: session.cwd,
     }).replace(/</g, '\\u003c');
     const nMsgs = convo.messages.filter((m) => m.role !== 'tool').length;
-    const sizeKb = Math.round((session.size || 0) / 1024) || '?';
 
     return `<!DOCTYPE html>
 <html>
@@ -170,134 +181,308 @@ class ConversationViewer {
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <style>
-  body { --accent:#d97757; margin:0; font:13px/1.55 -apple-system,'SF Pro Text','Segoe UI',sans-serif; }
+  body { --agent-strong:#d97757; --user-strong:#4f9f62; margin:0; font:13px/1.55 -apple-system,'SF Pro Text','Segoe UI',sans-serif; }
   body.sys { --bg:var(--vscode-editor-background); --panel:var(--vscode-sideBar-background,#252526);
     --line:var(--vscode-panel-border,#3c3c3c); --fg:var(--vscode-foreground);
     --mut:var(--vscode-descriptionForeground,#8a8a8a); --chip:var(--vscode-badge-background,#333);
-    --btn2:var(--vscode-button-secondaryBackground,#3a3d41); --hov:var(--vscode-list-hoverBackground,#2a2d2e);
-    --user-bub:color-mix(in srgb, #d97757 16%, var(--vscode-editor-background));
-    --ai-bub:var(--vscode-list-hoverBackground,#2a2d2e); --sep:#5a5a5a; }
+    --btn2:var(--vscode-button-secondaryBackground,#3a3d41); --sep:#5a5a5a;
+    --user-bub:color-mix(in srgb, #dff3d7 76%, var(--vscode-editor-background));
+    --agent-bub:color-mix(in srgb, #f3d6cc 60%, var(--vscode-editor-background));
+    --code-bg:#282828; --code-fg:#eee; --mark:#ffe98f; }
   body.dark { --bg:#1e1e1e; --panel:#252526; --line:#3c3c3c; --fg:#ccc; --mut:#8a8a8a;
-    --user-bub:#3a2620; --ai-bub:#2a2d2e; --chip:#333; --btn2:#3a3d41; --hov:#2a2d2e; --sep:#5a5a5a; }
-  body.light { --bg:#fff; --panel:#f3f3f3; --line:#e0e0e0; --fg:#333; --mut:#767676;
-    --user-bub:#fbeee8; --ai-bub:#f4f4f4; --chip:#ececec; --btn2:#e4e4e4; --hov:#ececec; --sep:#bbb; --accent:#c15f3c; }
+    --user-bub:#233427; --agent-bub:#3a2620; --chip:#333; --btn2:#3a3d41; --sep:#5a5a5a;
+    --code-bg:#161616; --code-fg:#eee; --mark:#6f5a18; }
+  body.light { --bg:#fff; --panel:#f7f7f7; --line:#dedede; --fg:#333; --mut:#767676;
+    --user-bub:#f4fbf1; --agent-bub:#f8efeb; --chip:#f1f1f1; --btn2:#e9e9e9; --sep:#bbb;
+    --agent-strong:#c15f3c; --user-strong:#4f9f62; --code-bg:#282828; --code-fg:#eee; --mark:#ffe98f; }
   body { background:var(--bg); color:var(--fg); display:flex; flex-direction:column; height:100vh; }
-  .vhead { padding:7px 12px; border-bottom:1px solid var(--line); background:var(--panel); flex-shrink:0; }
+  .vhead { padding:8px 12px 7px; border-bottom:1px solid var(--line); background:var(--panel); flex-shrink:0; position:relative; }
   .vrow { display:flex; align-items:center; gap:8px; }
-  .spark { color:var(--accent); }
-  .title { font-size:13px; font-weight:600; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .ibtn { border:1px solid transparent; background:transparent; color:var(--mut); font-size:14px; cursor:pointer; padding:2px 6px; border-radius:4px; }
+  .title { font-size:13px; font-weight:650; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ibtn { border:1px solid transparent; background:transparent; color:var(--mut); font-size:13px; cursor:pointer; padding:2px 6px; border-radius:4px; height:26px; }
   .ibtn:hover { background:var(--btn2); color:var(--fg); }
-  .ibtn.play { color:var(--accent); border-color:color-mix(in srgb, var(--accent) 55%, transparent);
-    background:color-mix(in srgb, var(--accent) 10%, transparent); font-weight:700; }
-  .ibtn.play:hover { color:#fff; background:var(--accent); border-color:var(--accent); }
-  .dates { color:var(--mut); font-size:11px; margin-top:3px; }
-  .details { display:none; color:var(--mut); font-size:11.5px; margin-top:4px; }
-  .details.open { display:block; }
-  .details code { background:var(--chip); border-radius:3px; padding:0 4px; font-size:11px; }
-  .gear-pop { position:absolute; top:36px; right:10px; background:var(--panel); border:1px solid var(--line);
-    border-radius:6px; padding:10px 12px; font-size:12px; z-index:5; display:none; width:235px; }
-  .gear-pop.open { display:block; }
-  .gear-pop .row { display:flex; align-items:center; gap:6px; margin:5px 0; }
-  .gear-pop .lbl { color:var(--mut); width:78px; flex-shrink:0; }
-  .gear-pop .opt { border:1px solid var(--line); border-radius:9px; padding:0 9px; cursor:pointer; color:var(--mut); }
-  .gear-pop .opt.on { border-color:var(--accent); color:var(--accent); }
-  .gear-pop input[type=text] { background:var(--bg); border:1px solid var(--line); color:var(--fg);
-    border-radius:4px; padding:2px 6px; width:100px; font-size:12px; }
-  .fbar { display:flex; gap:6px; align-items:center; padding:5px 12px; border-bottom:1px solid var(--line);
+  .ibtn.terminal { width:38px; border-color:var(--line); font:12px/1 ui-monospace,Menlo,monospace; }
+  .meta { color:var(--mut); font-size:11.5px; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .settings { position:absolute; top:38px; right:10px; background:var(--panel); border:1px solid var(--line);
+    border-radius:8px; padding:10px 12px; font-size:12px; z-index:20; display:none; width:245px;
+    box-shadow:0 8px 28px rgba(0,0,0,.16); }
+  .settings.open { display:block; }
+  .settings .row { display:flex; align-items:center; gap:7px; margin:6px 0; }
+  .settings .lbl { color:var(--mut); width:64px; flex-shrink:0; }
+  .settings .opt { border:1px solid var(--line); border-radius:9px; padding:0 9px; cursor:pointer; color:var(--mut); }
+  .settings .opt.on { border-color:var(--agent-strong); color:var(--agent-strong); }
+  .settings input[type=text] { background:var(--bg); border:1px solid var(--line); color:var(--fg);
+    border-radius:4px; padding:2px 6px; min-width:0; flex:1; font-size:12px; }
+  .controls { display:flex; gap:6px; align-items:center; padding:6px 12px; border-bottom:1px solid var(--line);
     font-size:11.5px; flex-wrap:wrap; flex-shrink:0; }
-  .fchip { border:1px solid var(--line); background:transparent; color:var(--mut); border-radius:11px;
+  .chip { border:1px solid var(--line); background:transparent; color:var(--mut); border-radius:11px;
     padding:1px 11px; cursor:pointer; font-size:11.5px; }
-  .fchip.on { background:var(--chip); color:var(--fg); border-color:var(--sep); }
-  .fbar .right { margin-left:auto; display:flex; gap:12px; align-items:center; color:var(--mut); }
-  .fbar label { cursor:pointer; user-select:none; }
-  .chat { flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:9px; }
+  .chip.on { background:var(--chip); color:var(--fg); border-color:var(--sep); }
+  .chip.search { padding-inline:15px; font-weight:650; border-color:color-mix(in srgb, var(--agent-strong) 35%, var(--line)); }
+  .chip.search.open { color:var(--fg); background:color-mix(in srgb, var(--agent-strong) 14%, var(--bg)); border-color:var(--agent-strong); }
+  .sep { width:1px; height:16px; background:var(--line); margin:0 2px; }
+  .searchbar { display:none; grid-template-columns:1fr auto auto auto auto; align-items:center; gap:7px;
+    padding:6px 12px; border-bottom:1px solid var(--line); flex-shrink:0; }
+  .searchbar.open { display:grid; }
+  .searchbox { min-width:120px; height:26px; border:1px solid var(--line); border-radius:999px;
+    padding:0 10px; background:var(--bg); color:var(--fg); font:inherit; font-size:12px; }
+  .count { color:var(--mut); font-size:11.5px; min-width:42px; text-align:right; }
+  .tiny { width:24px; height:24px; border-radius:6px; border:1px solid var(--line); background:transparent; color:var(--mut); cursor:pointer; }
+  .chatwrap { position:relative; flex:1; min-height:0; }
+  .chat { height:100%; overflow-y:auto; padding:14px 52px 16px 16px; display:flex; flex-direction:column; gap:9px; scroll-behavior:smooth; }
   .banner { text-align:center; background:var(--chip); color:var(--mut); border-radius:6px; padding:5px 10px; font-size:11.5px; }
   .banner b { color:var(--fg); cursor:pointer; text-decoration:underline; }
-  .day { align-self:center; color:var(--mut); font-size:11px; letter-spacing:.06em;
-    border-bottom:1px solid var(--line); padding:0 10px 2px; }
-  .msg { max-width:76%; padding:7px 11px; border-radius:10px; white-space:pre-wrap; overflow-wrap:break-word; }
-  .who { font-size:10.5px; color:var(--mut); margin-bottom:2px; letter-spacing:.04em; }
-  .msg.user { align-self:flex-end; background:var(--user-bub); border-right:3px solid var(--accent); border-bottom-right-radius:3px; }
-  .msg.assistant { align-self:flex-start; background:var(--ai-bub); border-bottom-left-radius:3px; }
-  body[data-names="on"] .msg.assistant .who::before { content:"✳ "; color:var(--accent); }
+  .day { align-self:center; position:sticky; top:8px; z-index:2; color:var(--mut); font-size:11px;
+    background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:2px 10px;
+    box-shadow:0 2px 9px rgba(0,0,0,.05); }
+  .msg { max-width:78%; width:fit-content; padding:8px 11px; border-radius:12px; overflow-wrap:break-word; }
+  .msg.user { align-self:flex-end; background:var(--user-bub); border-right:3px solid var(--user-strong); border-bottom-right-radius:3px; }
+  .msg.assistant { align-self:flex-start; background:var(--agent-bub); border-left:3px solid var(--agent-strong); border-bottom-left-radius:3px; }
+  .who { font-size:10.5px; color:var(--mut); margin-bottom:3px; letter-spacing:.04em; font-weight:700; text-transform:uppercase; }
+  .msg.assistant .who::before { content:"✳ "; color:var(--agent-strong); }
   body[data-names="off"] .who { display:none; }
-  body[data-mode="plain"] .msg { max-width:100%; align-self:stretch; background:transparent;
-    border:none; border-left:2px solid var(--line); border-radius:0; padding:2px 12px; }
-  body[data-mode="plain"] .msg.user { border-left-color:var(--accent); }
-  .more { color:var(--accent); font-size:11.5px; cursor:pointer; margin-top:4px; display:inline-block; }
-  .tool { align-self:center; font:11px ui-monospace,Menlo,monospace; color:var(--mut);
-    background:var(--chip); border-radius:10px; padding:1px 10px; }
-  body[data-mode="plain"] .tool { align-self:flex-start; background:transparent; padding-left:12px; }
-  .jump { position:fixed; right:16px; bottom:14px; background:var(--btn2); color:var(--fg);
-    border:1px solid var(--line); border-radius:50%; width:28px; height:28px; cursor:pointer;
-    display:flex; align-items:center; justify-content:center; }
+  .body p { margin:0 0 7px; white-space:pre-wrap; }
+  .body p:last-child { margin-bottom:0; }
+  .body h3 { margin:3px 0 6px; font-size:14px; line-height:1.28; }
+  .body ul, .body ol { margin:6px 0 6px 19px; padding:0; }
+  code.inline { background:rgba(255,255,255,.48); border-radius:4px; padding:1px 4px;
+    color:var(--agent-strong); font:12px ui-monospace,Menlo,monospace; }
+  .quote { border-left:3px solid var(--agent-strong); background:rgba(255,255,255,.35); padding:5px 8px;
+    border-radius:6px; margin:7px 0; color:var(--fg); }
+  pre { margin:8px 0; padding:9px 10px; border-radius:8px; background:var(--code-bg); color:var(--code-fg);
+    overflow-x:auto; font:12px/1.45 ui-monospace,Menlo,monospace; }
+  .code-label { display:flex; justify-content:space-between; align-items:center; gap:8px; color:#b9b9b9; font-size:11px; margin-bottom:5px; }
+  .copy-code { border:1px solid #555; border-radius:5px; background:transparent; color:#dcdcdc; font:inherit; font-size:11px; cursor:pointer; }
+  .table-wrap { max-width:100%; overflow-x:auto; margin:8px 0; border:1px solid color-mix(in srgb, var(--line) 80%, var(--fg));
+    border-radius:8px; background:rgba(255,255,255,.35); }
+  table { border-collapse:collapse; min-width:430px; width:100%; font-size:12px; }
+  th, td { border-bottom:1px solid var(--line); padding:5px 7px; text-align:left; vertical-align:top; }
+  th { background:rgba(0,0,0,.05); font-weight:700; }
+  mark { background:var(--mark); color:inherit; border-radius:3px; padding:0 1px; }
+  mark.current { background:#ffc85a; box-shadow:0 0 0 2px rgba(217,119,87,.45); }
+  .more { color:var(--agent-strong); font-size:11.5px; cursor:pointer; margin-top:5px; display:inline-block; }
+  .more:hover { text-decoration:underline; }
+  .rail { position:absolute; right:13px; top:16px; bottom:18px; width:3px; border-radius:999px;
+    background:rgba(127,127,127,.18); pointer-events:none; z-index:5; }
+  .rail-fill { position:absolute; top:0; left:0; width:3px; height:var(--rail-top,0%); border-radius:999px;
+    background:color-mix(in srgb, var(--agent-strong) 55%, transparent); opacity:.7; }
+  .rail-thumb { position:absolute; left:-3px; top:var(--rail-top,0%); width:9px; height:46px; margin-top:-23px;
+    border-radius:999px; background:var(--agent-strong); box-shadow:0 1px 7px rgba(0,0,0,.22); opacity:.82; }
+  .pospill { position:absolute; right:28px; top:var(--rail-top,0%); transform:translateY(-50%);
+    background:rgba(55,55,55,.94); color:#fff; border-radius:999px; padding:4px 9px; font-size:11px;
+    line-height:1.2; white-space:nowrap; pointer-events:none; opacity:0; transition:opacity 160ms ease; z-index:6; }
+  .chatwrap.scrolling .pospill, .chatwrap:hover .pospill { opacity:1; }
+  .jump { position:absolute; right:20px; bottom:16px; background:var(--btn2); color:var(--fg);
+    border:1px solid var(--line); border-radius:50%; width:30px; height:30px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; z-index:7; }
   .empty { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--mut); gap:6px; }
 </style>
 </head>
-<body class="sys" data-mode="chat" data-names="on">
+<body class="sys" data-names="${cfg.showNames ? 'on' : 'off'}">
   <div class="vhead">
     <div class="vrow">
-      <span class="spark">✳</span><span class="title">${esc(title)}</span>
-      <button class="ibtn play" id="resume" title="Resume in terminal — the only action that runs anything">▶</button>
-      <button class="ibtn" id="copy" title="Copy entire conversation (respects filters and toggles)">⧉</button>
-      <button class="ibtn" id="export" title="Save conversation as .md">⬇</button>
-      <button class="ibtn" id="reveal" title="Reveal raw .jsonl in Finder">{ }</button>
-      <button class="ibtn" id="gear" title="Viewer settings">⚙</button>
-      <button class="ibtn" id="fold" title="Session details">⌄</button>
+      <span class="title">${esc(title)}</span>
+      <button class="ibtn terminal" id="resume" title="Resume in Claude terminal — the only action that runs anything">▶_</button>
+      <button class="ibtn" id="copyPath" title="Copy full raw session JSONL path">⧉</button>
+      <button class="ibtn" id="export" title="Save conversation as Markdown">⬇</button>
+      <button class="ibtn" id="reveal" title="Open raw .jsonl">{}</button>
+      <button class="ibtn" id="settingsBtn" title="Names">Aa</button>
     </div>
-    <div class="dates" id="dates">created ${fmt(convo.firstTs)} → last message ${fmt(convo.lastTs)}</div>
-    <div class="details" id="details">📁 ${esc(folder)} · session <code>${esc(session.id)}</code> · ${nMsgs} messages · transcript ${sizeKb} KB · started in <code>${esc(shortHome(session.cwd))}</code></div>
-    <div class="gear-pop" id="gearpop">
+    <div class="meta" id="meta">${esc(folder)} · ${nMsgs} messages · ${esc(session.id)} · ${fmt(convo.firstTs)} → ${fmt(convo.lastTs)}</div>
+    <div class="settings" id="settings">
+      <div class="row"><label><input type="checkbox" id="showNames"${cfg.showNames ? ' checked' : ''}> Show names</label></div>
+      <div class="row"><span class="lbl">You</span><input type="text" id="userLabel"></div>
+      <div class="row"><span class="lbl">Agent</span><input type="text" id="agentLabel"></div>
       <div class="row"><span class="lbl">Theme</span>
         <span class="opt" data-th="system">System</span><span class="opt" data-th="light">Light</span><span class="opt" data-th="dark">Dark</span></div>
-      <div class="row"><span class="lbl">Your label</span><input type="text" id="ulabel"></div>
-      <div class="row" style="color:var(--mut);font-size:11px">System follows the VS Code theme. Also in Settings → Claude Sessions Viewer.</div>
     </div>
   </div>
-  <div class="fbar">
-    <button class="fchip on" data-f="all">All</button>
-    <button class="fchip" data-f="user" id="chipUser">USER only</button>
-    <button class="fchip" data-f="assistant">CLAUDE only</button>
-    <span class="right">
-      <label><input type="checkbox" id="mode"> plain flow</label>
-      <label><input type="checkbox" id="names" checked> names</label>
-      <label><input type="checkbox" id="tools"> tools</label>
-    </span>
+  <div class="controls">
+    <button class="chip on" data-f="all">All</button>
+    <button class="chip" data-f="user" id="chipUser">Me</button>
+    <button class="chip" data-f="assistant" id="chipAgent">${esc(cfg.agentLabel)}</button>
+    <span class="sep"></span>
+    <button class="chip" id="collapseLong" title="Collapse long messages">Collapse long</button>
+    <button class="chip" id="expandLong" title="Expand all long messages">Expand all</button>
+    <span class="sep"></span>
+    <button class="chip search" id="searchToggle">Search</button>
   </div>
-  <div class="chat" id="chat"></div>
-  <div class="jump" id="jump" title="Jump to last message">↓</div>
+  <div class="searchbar" id="searchbar">
+    <input class="searchbox" id="search" placeholder="Search inside this session">
+    <div class="count" id="count">0 / 0</div>
+    <button class="tiny" id="prev" title="Previous match">↑</button>
+    <button class="tiny" id="next" title="Next match">↓</button>
+    <button class="tiny" id="clearSearch" title="Close search">x</button>
+  </div>
+  <div class="chatwrap" id="chatwrap">
+    <div class="chat" id="chat"></div>
+    <div class="rail" aria-hidden="true"><div class="rail-fill" id="railFill"></div><div class="rail-thumb" id="railThumb"></div></div>
+    <div class="pospill" id="pospill">msg 1 / ${nMsgs}</div>
+    <button class="jump" id="jump" title="Jump to last message">↓</button>
+  </div>
 
 <script nonce="${nonce}">
 const vscodeApi = acquireVsCodeApi();
 const DATA = ${data};
-const DISPLAY_CAP = 1500;
-let filter = 'all', renderAll = DATA.messages.length <= DATA.window * 1.2;
+const DISPLAY_CAP = 700;
+let filter = 'all';
+let renderAll = DATA.messages.length <= DATA.window * 1.2;
+let currentMatch = 0;
+let matches = [];
+let scrollTimer = 0;
+const expandedMessages = new Set();
 const $ = id => document.getElementById(id);
-const escHtml = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+const escHtml = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
 document.body.className = DATA.theme === 'system' ? 'sys' : DATA.theme;
-$('ulabel').value = DATA.userLabel;
+document.body.dataset.names = DATA.showNames ? 'on' : 'off';
+$('userLabel').value = DATA.userLabel;
+$('agentLabel').value = DATA.agentLabel;
 document.querySelectorAll('[data-th]').forEach(b => {
   if (b.dataset.th === DATA.theme) b.classList.add('on');
 });
 
+function labels() {
+  return {
+    user: ($('userLabel').value || 'USER').toUpperCase(),
+    agent: ($('agentLabel').value || 'CLAUDE').toUpperCase()
+  };
+}
+
 function dayOf(ts){ if(!ts) return null; const d = new Date(ts);
   return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}).toUpperCase(); }
 
-function render(keepScroll){
-  const chatEl = $('chat');
-  const wasAtBottom = chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < 60;
-  const prevScroll = chatEl.scrollTop;
-  const label = ($('ulabel').value || 'USER').toUpperCase();
-  $('chipUser').textContent = label + ' only';
+function fmtShortDay(day) {
+  return day ? day.replace(' JUL ', ' Jul ') : '';
+}
+
+function visibleText(html) {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  return div.textContent || '';
+}
+
+function inlineMarkdown(text) {
+  return escHtml(text).replace(/\\\`([^\\\`]+)\\\`/g, '<code class="inline">$1</code>');
+}
+
+function renderSimpleMarkdown(text) {
+  const normalized = String(text || '').replace(/\\r\\n/g, '\\n');
+  const parts = normalized.split(/(\`\`\`[\\s\\S]*?\`\`\`)/g);
+  let html = '';
+  for (const part of parts) {
+    if (!part) continue;
+    if (part.startsWith('\`\`\`')) {
+      const firstLine = part.split('\\n')[0].replace(/^\`\`\`/, '').trim();
+      const code = part.replace(/^\`\`\`[^\\n]*\\n?/, '').replace(/\`\`\`$/, '');
+      html += '<pre><div class="code-label"><span>' + escHtml(firstLine || 'code') +
+        '</span><button class="copy-code">copy</button></div><code>' + escHtml(code) + '</code></pre>';
+      continue;
+    }
+    html += renderBlocks(part);
+  }
+  return html || '<p></p>';
+}
+
+function renderBlocks(text) {
+  const lines = text.split('\\n');
+  let html = '';
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim()) { i++; continue; }
+    if (/^#{1,3}\\s+/.test(line)) {
+      html += '<h3>' + inlineMarkdown(line.replace(/^#{1,3}\\s+/, '')) + '</h3>';
+      i++;
+      continue;
+    }
+    if (/^>\\s?/.test(line)) {
+      const quote = [];
+      while (i < lines.length && /^>\\s?/.test(lines[i])) quote.push(lines[i++].replace(/^>\\s?/, ''));
+      html += '<div class="quote">' + inlineMarkdown(quote.join('\\n')) + '</div>';
+      continue;
+    }
+    if (line.includes('|') && i + 1 < lines.length && /^\\s*\\|?\\s*:?-{3,}:?/.test(lines[i + 1])) {
+      const headers = line.split('|').map(c => c.trim()).filter(Boolean);
+      i += 2;
+      const rows = [];
+      while (i < lines.length && lines[i].includes('|') && lines[i].trim()) {
+        rows.push(lines[i].split('|').map(c => c.trim()).filter(Boolean));
+        i++;
+      }
+      html += '<div class="table-wrap"><table><thead><tr>' + headers.map(h => '<th>' + inlineMarkdown(h) + '</th>').join('') +
+        '</tr></thead><tbody>' + rows.map(r => '<tr>' + r.map(c => '<td>' + inlineMarkdown(c) + '</td>').join('') + '</tr>').join('') +
+        '</tbody></table></div>';
+      continue;
+    }
+    if (/^\\s*[-*]\\s+/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\\s*[-*]\\s+/.test(lines[i])) items.push(lines[i++].replace(/^\\s*[-*]\\s+/, ''));
+      html += '<ul>' + items.map(item => '<li>' + inlineMarkdown(item) + '</li>').join('') + '</ul>';
+      continue;
+    }
+    const para = [];
+    while (i < lines.length && lines[i].trim() && !/^#{1,3}\\s+/.test(lines[i]) && !/^>\\s?/.test(lines[i]) && !/^\\s*[-*]\\s+/.test(lines[i])) {
+      if (lines[i].includes('|') && i + 1 < lines.length && /^\\s*\\|?\\s*:?-{3,}:?/.test(lines[i + 1])) break;
+      para.push(lines[i++]);
+    }
+    html += '<p>' + inlineMarkdown(para.join('\\n')) + '</p>';
+  }
+  return html;
+}
+
+function highlightHtml(html, query, isCurrent) {
+  if (!query) return html;
+  const safe = query.replace(/[.*+?^${'${'}}()|[\\]\\\\]/g, '\\\\$&');
+  let markedCurrent = false;
+  return html.replace(new RegExp('(' + safe + ')', 'gi'), m => {
+    const cls = isCurrent && !markedCurrent ? ' class="current"' : '';
+    markedCurrent = true;
+    return '<mark' + cls + '>' + m + '</mark>';
+  });
+}
+
+function renderMessageBody(m, index, isCurrentMatch) {
+  let text = m.text || '';
+  const long = text.length > DISPLAY_CAP || text.split('\\n').length > 10;
+  if (long && !expandedMessages.has(index)) text = text.slice(0, DISPLAY_CAP).trimEnd() + '...';
+  let html = renderSimpleMarkdown(text);
+  html = highlightHtml(html, $('search').value.trim(), isCurrentMatch);
+  return { html, long };
+}
+
+function collectMatches() {
+  const query = $('search').value.trim().toLowerCase();
+  if (!query) return [];
+  const found = [];
+  DATA.messages.forEach((m, i) => {
+    if (m.role === 'tool') return;
+    if (filter !== 'all' && m.role !== filter) return;
+    if ((m.text || '').toLowerCase().includes(query)) found.push(i);
+  });
+  return found;
+}
+
+function state() {
+  const l = labels();
+  return { filter, names: document.body.dataset.names !== 'off', userLabel: l.user, agentLabel: l.agent };
+}
+
+function render(keepScroll) {
   const chat = $('chat');
+  const wasAtBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 60;
+  const prevScroll = chat.scrollTop;
+  const l = labels();
+  $('chipUser').textContent = l.user === 'USER' ? 'Me' : l.user;
+  $('chipAgent').textContent = l.agent;
+  matches = collectMatches();
+  currentMatch = Math.min(currentMatch, Math.max(0, matches.length - 1));
   chat.innerHTML = '';
   const msgs = DATA.messages;
   if (!msgs.some(m => m.role !== 'tool')) {
-    chat.innerHTML = '<div class="empty"><div style="font-size:26px;color:var(--accent);opacity:.6">✳</div>' +
+    chat.innerHTML = '<div class="empty"><div style="font-size:26px;color:var(--agent-strong);opacity:.6">✳</div>' +
       '<div>No readable conversation in this transcript</div>' +
-      '<div style="font-size:11.5px">(only tool traffic / system records — { } opens the raw file)</div></div>';
+      '<div style="font-size:11.5px">Open raw JSON for transcript internals.</div></div>';
     return;
   }
   let start = 0;
@@ -305,69 +490,127 @@ function render(keepScroll){
     start = Math.max(0, msgs.length - DATA.window);
     chat.insertAdjacentHTML('beforeend',
       '<div class="banner">big session — latest ' + (msgs.length - start) +
-      ' rendered for speed · <b id="rall">render all ' + msgs.length + '</b> (⌘A then selects all) · ⧉ always copies all</div>');
+      ' rendered for speed · <b id="rall">render all ' + msgs.length + '</b> · export/copy still includes all</div>');
   }
   let lastDay = null;
-  const showTools = $('tools').checked;
   const frag = [];
   for (let i = start; i < msgs.length; i++) {
     const m = msgs[i];
     const day = dayOf(m.ts);
-    if (day && day !== lastDay && filter === 'all') { frag.push('<div class="day">' + day + '</div>'); lastDay = day; }
-    if (m.role === 'tool') {
-      if (showTools && filter === 'all') frag.push('<div class="tool">' + escHtml(m.text) + '</div>');
-      continue;
-    }
+    if (m.role === 'tool') continue;
     if (filter !== 'all' && m.role !== filter) continue;
-    const who = m.role === 'user' ? escHtml(label) : 'CLAUDE';
-    let text = m.text, more = '';
-    if (text.length > DISPLAY_CAP) {
-      more = '<span class="more" data-i="' + i + '">show full message ▾</span>';
-      text = text.slice(0, DISPLAY_CAP) + '…';
-    }
-    frag.push('<div class="msg ' + m.role + '"><div class="who">' + who + '</div>' + escHtml(text) + more + '</div>');
+    if (day && day !== lastDay && filter === 'all') { frag.push('<div class="day">' + day + '</div>'); lastDay = day; }
+    const who = m.role === 'user' ? l.user : l.agent;
+    const body = renderMessageBody(m, i, matches[currentMatch] === i);
+    const more = body.long ? '<span class="more" data-i="' + i + '">' + (expandedMessages.has(i) ? 'Show less ▴' : 'Read more ▾') + '</span>' : '';
+    frag.push('<div class="msg ' + m.role + '" data-i="' + i + '" data-day="' + (day || '') + '"><div class="who">' + escHtml(who) + '</div><div class="body">' + body.html + '</div>' + more + '</div>');
   }
   chat.insertAdjacentHTML('beforeend', frag.join(''));
   const rall = $('rall');
   if (rall) rall.onclick = () => { renderAll = true; render(); };
   chat.querySelectorAll('.more').forEach(el => el.onclick = () => {
-    const m = DATA.messages[+el.dataset.i];
-    el.parentElement.innerHTML = '<div class="who">' +
-      escHtml(el.parentElement.querySelector('.who').textContent) + '</div>' + escHtml(m.text);
+    const i = +el.dataset.i;
+    if (expandedMessages.has(i)) expandedMessages.delete(i);
+    else expandedMessages.add(i);
+    render(true);
   });
+  chat.querySelectorAll('.copy-code').forEach(btn => btn.onclick = () => {
+    const code = btn.closest('pre').querySelector('code');
+    if (code) navigator.clipboard.writeText(code.textContent).catch(() => {});
+  });
+  updateMatches(false);
   if (keepScroll && !wasAtBottom) chat.scrollTop = prevScroll;
-  else chat.scrollTop = chat.scrollHeight; // WhatsApp: open at last message
+  else chat.scrollTop = chat.scrollHeight;
+  updateRail();
 }
 
 function fmtTs(ts){ if(!ts) return '?'; const d = new Date(ts);
   return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) + ' ' +
          d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}); }
 
+function updateMatches(jump) {
+  const query = $('search').value.trim().toLowerCase();
+  if (!matches.length) {
+    currentMatch = 0;
+    $('count').textContent = query ? '0 / 0' : '0 / 0';
+    return;
+  }
+  currentMatch = Math.min(currentMatch, matches.length - 1);
+  $('count').textContent = (currentMatch + 1) + ' / ' + matches.length;
+  const target = $('chat').querySelector('.msg[data-i="' + matches[currentMatch] + '"]');
+  if (target && jump) target.scrollIntoView({ block:'center', behavior:'smooth' });
+}
+
+function currentMessage() {
+  const bubbles = Array.from($('chat').querySelectorAll('.msg'));
+  const target = $('chat').getBoundingClientRect().top + $('chat').clientHeight * 0.42;
+  let current = bubbles[0];
+  for (const bubble of bubbles) {
+    if (bubble.getBoundingClientRect().top <= target) current = bubble;
+    else break;
+  }
+  return current;
+}
+
+function updateRail() {
+  const chat = $('chat');
+  const max = Math.max(1, chat.scrollHeight - chat.clientHeight);
+  const progress = Math.min(1, Math.max(0, chat.scrollTop / max));
+  const top = (progress * 100).toFixed(2) + '%';
+  $('railFill').style.setProperty('--rail-top', top);
+  $('railThumb').style.setProperty('--rail-top', top);
+  $('pospill').style.setProperty('--rail-top', top);
+  const current = currentMessage();
+  const idx = current ? Number(current.dataset.i) + 1 : 1;
+  const day = current ? fmtShortDay(current.dataset.day) : '';
+  $('pospill').textContent = (day ? day + ' · ' : '') + 'msg ' + idx + ' / ' + DATA.messages.length;
+  $('chatwrap').classList.add('scrolling');
+  clearTimeout(scrollTimer);
+  scrollTimer = setTimeout(() => $('chatwrap').classList.remove('scrolling'), 850);
+}
+
 window.addEventListener('message', e => {
   const m = e.data;
   if (m.type === 'update') {
     DATA.messages = m.messages;
-    $('dates').textContent = 'created ' + fmtTs(m.firstTs) + ' → last message ' + fmtTs(m.lastTs) + ' · live';
+    $('meta').textContent = '${esc(folder)} · ' + DATA.messages.filter(x => x.role !== 'tool').length +
+      ' messages · ' + DATA.sessionId + ' · ' + fmtTs(m.firstTs) + ' → ' + fmtTs(m.lastTs) + ' · live';
     render(true);
   }
 });
 
-const state = () => ({ filter, names: $('names').checked, tools: $('tools').checked });
 $('resume').onclick = () => vscodeApi.postMessage({ type:'resume' });
-$('copy').onclick   = () => vscodeApi.postMessage(Object.assign({ type:'copy' }, state()));
+$('copyPath').onclick = () => vscodeApi.postMessage({ type:'copyPath' });
 $('export').onclick = () => vscodeApi.postMessage(Object.assign({ type:'export' }, state()));
 $('reveal').onclick = () => vscodeApi.postMessage({ type:'reveal' });
-$('gear').onclick   = () => $('gearpop').classList.toggle('open');
-$('fold').onclick   = () => { const d = $('details'); d.classList.toggle('open');
-  $('fold').textContent = d.classList.contains('open') ? '⌃' : '⌄'; };
-$('jump').onclick   = () => { const c = $('chat'); c.scrollTop = c.scrollHeight; };
-$('mode').onchange  = e => document.body.dataset.mode = e.target.checked ? 'plain' : 'chat';
-$('names').onchange = e => document.body.dataset.names = e.target.checked ? 'on' : 'off';
-$('tools').onchange = render;
-$('ulabel').oninput = () => { render(); vscodeApi.postMessage({ type:'setConfig', userLabel: $('ulabel').value }); };
-document.querySelectorAll('.fchip').forEach(b => b.onclick = () => {
-  document.querySelectorAll('.fchip').forEach(x => x.classList.remove('on'));
-  b.classList.add('on'); filter = b.dataset.f; render();
+$('settingsBtn').onclick = () => $('settings').classList.toggle('open');
+$('searchToggle').onclick = () => {
+  $('searchbar').classList.toggle('open');
+  $('searchToggle').classList.toggle('open', $('searchbar').classList.contains('open'));
+  if ($('searchbar').classList.contains('open')) $('search').focus();
+};
+$('jump').onclick = () => { $('chat').scrollTop = $('chat').scrollHeight; updateRail(); };
+$('collapseLong').onclick = () => { expandedMessages.clear(); render(true); };
+$('expandLong').onclick = () => {
+  DATA.messages.forEach((m, i) => { if (m.role !== 'tool' && m.text && (m.text.length > DISPLAY_CAP || m.text.split('\\n').length > 10)) expandedMessages.add(i); });
+  render(true);
+};
+$('showNames').onchange = e => {
+  document.body.dataset.names = e.target.checked ? 'on' : 'off';
+  vscodeApi.postMessage({ type:'setConfig', showNames: e.target.checked });
+};
+$('userLabel').oninput = () => { render(true); vscodeApi.postMessage({ type:'setConfig', userLabel: $('userLabel').value }); };
+$('agentLabel').oninput = () => { render(true); vscodeApi.postMessage({ type:'setConfig', agentLabel: $('agentLabel').value }); };
+$('search').oninput = () => { currentMatch = 0; render(true); };
+$('next').onclick = () => { if (!matches.length) return; currentMatch = (currentMatch + 1) % matches.length; render(true); updateMatches(true); };
+$('prev').onclick = () => { if (!matches.length) return; currentMatch = (currentMatch - 1 + matches.length) % matches.length; render(true); updateMatches(true); };
+$('clearSearch').onclick = () => {
+  if ($('search').value) { $('search').value = ''; render(true); $('search').focus(); }
+  else { $('searchbar').classList.remove('open'); $('searchToggle').classList.remove('open'); }
+};
+document.querySelectorAll('[data-f]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('[data-f]').forEach(x => x.classList.remove('on'));
+  b.classList.add('on'); filter = b.dataset.f; currentMatch = 0; render(true);
 });
 document.querySelectorAll('[data-th]').forEach(b => b.onclick = () => {
   document.querySelectorAll('[data-th]').forEach(x => x.classList.remove('on'));
@@ -375,6 +618,8 @@ document.querySelectorAll('[data-th]').forEach(b => b.onclick = () => {
   document.body.className = b.dataset.th === 'system' ? 'sys' : b.dataset.th;
   vscodeApi.postMessage({ type:'setConfig', theme: b.dataset.th });
 });
+$('chat').addEventListener('scroll', updateRail, { passive:true });
+window.addEventListener('resize', updateRail);
 render();
 </script>
 </body>

@@ -5,6 +5,8 @@ const os = require('os');
 const { indexAll, isAutomationSession } = require('./indexer');
 const { ConversationViewer } = require('./viewer');
 
+const TIMELINE_TITLE_MAX = 48;
+
 function relativeAge(iso) {
   if (!iso) return '';
   const ms = Date.now() - new Date(iso).getTime();
@@ -31,6 +33,12 @@ function normalizeTitleForMatch(s) {
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
+}
+
+function truncateTitle(title, max = TIMELINE_TITLE_MAX) {
+  const value = String(title || '');
+  if (value.length <= max) return value;
+  return value.slice(0, Math.max(1, max - 1)).trimEnd() + '…';
 }
 
 // Two different projects can share a folder basename (e.g. two "backend"
@@ -74,9 +82,17 @@ class SessionTreeProvider {
     // 'chronological' = flat session timeline, newest first, across folders
     // ('chronological' kept as the stored value for back-compat).
     this.treeMode = context.globalState.get('treeMode', 'folders');
+    if (this.treeMode === 'chronological' && !this.config.timelineEnabled) this.treeMode = 'folders';
   }
 
   async toggleGrouping() {
+    if (!this.config.timelineEnabled) {
+      this.treeMode = 'folders';
+      this.context.globalState.update('treeMode', this.treeMode);
+      this.updateModeUi();
+      vscode.window.showInformationMessage('Claude Sessions: timeline is experimental and disabled in Settings.');
+      return;
+    }
     const sessionId = this.selectedSessionId;
     if (sessionId) this.context.globalState.update('selectedSessionId', sessionId);
     this.treeMode = this.treeMode === 'folders' ? 'chronological' : 'folders';
@@ -138,11 +154,14 @@ class SessionTreeProvider {
   // are shown via context keys.
   updateModeUi() {
     if (this.view) {
-      const mode = this.treeMode === 'folders' ? 'folders A-Z' : 'session timeline';
+      const isFolders = this.treeMode === 'folders';
+      const mode = isFolders ? 'folders A-Z' : 'newest first';
+      this.view.title = isFolders ? 'Sessions by Folder' : 'Session Timeline';
       this.view.description = this.loaded ? mode : `${mode} · indexing`;
     }
     vscode.commands.executeCommand('setContext', 'claudeSessions.mode', this.treeMode);
     vscode.commands.executeCommand('setContext', 'claudeSessions.expandedAll', this.expandedAll);
+    vscode.commands.executeCommand('setContext', 'claudeSessions.timelineEnabled', this.config.timelineEnabled);
   }
 
   get cacheFile() {
@@ -159,6 +178,7 @@ class SessionTreeProvider {
     return {
       promptChildren: c.get('promptChildren.enabled', false),
       showAutomation: c.get('showAutomationSessions', false),
+      timelineEnabled: c.get('timeline.enabled', false),
       revealEnabled: c.get('reveal.enabled', true),
       revealOpenConversation: c.get('reveal.openConversation', true),
     };
@@ -384,7 +404,7 @@ class SessionTreeProvider {
       // Two projects can share a folder basename; disambiguate only the
       // colliding groups with their shortened parent path.
       const parentHint = g.labelCollision ? shortHome(path.dirname(g.folderPath)) : '';
-      const countPart = `${g.sessions.length}`;
+      const countPart = `(${g.sessions.length})`;
       const statusPart = exists ? '' : 'gone';
       item.description = [parentHint, countPart, statusPart].filter(Boolean).join(' · ');
       item.iconPath = vscode.Uri.joinPath(this.context.extensionUri, 'assets', 'folder-spark.svg');
@@ -413,7 +433,8 @@ class SessionTreeProvider {
     // Live ● sits in the left padding slot (the right column is the first
     // thing a narrow sidebar clips); em-space keeps titles aligned otherwise.
     const live = s.mtimeMs && Date.now() - s.mtimeMs < 5 * 60 * 1000;
-    const label = `${live ? '●' : ' '} ${ageTs ? `[${relativeAge(ageTs)}] ` : ''}${title}`;
+    const visibleTitle = this.treeMode === 'chronological' ? truncateTitle(title) : title;
+    const label = `${live ? '●' : ' '} ${ageTs ? `[${relativeAge(ageTs)}] ` : ''}${visibleTitle}`;
     const item = new vscode.TreeItem(
       label,
       this.config.promptChildren && s.prompts && s.prompts.length
@@ -510,6 +531,14 @@ function activate(context) {
       if (e.affectsConfiguration('claudeSessionsViewer.reveal.enabled')) updateRevealStatus();
       if (e.affectsConfiguration('claudeSessionsViewer.promptChildren.enabled')) provider.refresh();
       if (e.affectsConfiguration('claudeSessionsViewer.showAutomationSessions')) provider.refresh();
+      if (e.affectsConfiguration('claudeSessionsViewer.timeline.enabled')) {
+        if (!provider.config.timelineEnabled && provider.treeMode === 'chronological') {
+          provider.treeMode = 'folders';
+          context.globalState.update('treeMode', 'folders');
+        }
+        provider.updateModeUi();
+        provider.refresh();
+      }
     })
   );
   setTimeout(() => {

@@ -38,8 +38,8 @@ Module._load = function (request, ...rest) {
 
 const { SessionTreeProvider } = require('../extension');
 
-const fakeContext = () => ({
-  globalState: { get: (k, d) => d, update() {} },
+const fakeContext = (state = {}) => ({
+  globalState: { get: (k, d) => (k in state ? state[k] : d), update() {} },
   globalStorageUri: { fsPath: '/tmp/x' },
 });
 
@@ -112,4 +112,48 @@ test('mode switching: allSessions and getParent follow the active mode', () => {
   assert.strictEqual(p.allSessions().length, 5);
   const parent = p.getParent(p.allSessions()[0]);
   assert.strictEqual(parent.kind, 'folder', 'folder-mode sessions live under their folder');
+});
+
+test('timeline mode falls back to folders when the experimental setting is off', () => {
+  const p = new SessionTreeProvider(fakeContext({ treeMode: 'chronological' }));
+  assert.strictEqual(p.treeMode, 'folders');
+});
+
+test('timeline rows cap long titles and keep folder in the description', () => {
+  const p = new SessionTreeProvider(fakeContext());
+  p.treeMode = 'chronological';
+  const node = p.buildTimeline(
+    [
+      {
+        ...S(
+          'long-title',
+          'claude-sessions-viewer',
+          '2026-07-07T12:00:00.000Z'
+        ),
+        title: 'This is a very long generated session title that would hide the folder name in a narrow sidebar',
+      },
+    ],
+    null
+  )[0];
+
+  const item = p.getTreeItem(node);
+  assert.match(item.label, /…$/, 'timeline label truncates the visible title');
+  assert.strictEqual(item.description, 'claude-sessions-viewer', 'folder remains in the right-side column');
+  assert.match(item.tooltip.value, /\*\*This is a very long generated session title/, 'full title stays in tooltip');
+});
+
+test('view title switches between folder and timeline modes', () => {
+  const p = new SessionTreeProvider(fakeContext());
+  p.view = {};
+
+  p.treeMode = 'folders';
+  p.loaded = true;
+  p.updateModeUi();
+  assert.strictEqual(p.view.title, 'Sessions by Folder');
+  assert.strictEqual(p.view.description, 'folders A-Z');
+
+  p.treeMode = 'chronological';
+  p.updateModeUi();
+  assert.strictEqual(p.view.title, 'Session Timeline');
+  assert.strictEqual(p.view.description, 'newest first');
 });

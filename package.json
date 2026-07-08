@@ -1,8 +1,8 @@
 {
   "name": "claude-sessions-viewer",
   "displayName": "Claude Sessions Viewer",
-  "description": "Browse Claude Code sessions grouped by project folder; right-click any folder to start a Claude session there.",
-  "version": "1.10.0",
+  "description": "Read Claude Code sessions like chat: locate current work, review history, export Markdown. Read-only, local, zero dependencies.",
+  "version": "1.11.0",
   "publisher": "yurykoretskiy",
   "license": "MIT",
   "engines": {
@@ -139,12 +139,12 @@
       "view/title": [
         {
           "command": "claudeSessions.toggleGrouping",
-          "when": "view == claudeSessions.tree && claudeSessions.mode == 'folders'",
+          "when": "view == claudeSessions.tree && claudeSessions.mode == 'folders' && claudeSessions.timelineEnabled",
           "group": "navigation@0"
         },
         {
           "command": "claudeSessions.toggleGroupingAlt",
-          "when": "view == claudeSessions.tree && claudeSessions.mode == 'chronological'",
+          "when": "view == claudeSessions.tree && claudeSessions.mode == 'chronological' && claudeSessions.timelineEnabled",
           "group": "navigation@0"
         },
         {
@@ -259,10 +259,24 @@
             "scope": "window",
             "markdownDescription": "Label shown on **your** messages in the viewer and in copies/exports. Kept generic so shared conversations never expose a personal name."
           },
+          "claudeSessionsViewer.agentLabel": {
+            "type": "string",
+            "default": "CLAUDE",
+            "order": 3,
+            "scope": "window",
+            "markdownDescription": "Label shown on assistant messages in the viewer and in copies/exports."
+          },
+          "claudeSessionsViewer.showNames": {
+            "type": "boolean",
+            "default": true,
+            "order": 4,
+            "scope": "window",
+            "markdownDescription": "Show speaker names inside conversation bubbles. On by default so sessions stay clear when shared or when future agents are involved."
+          },
           "claudeSessionsViewer.liveRefresh.enabled": {
             "type": "boolean",
             "default": false,
-            "order": 3,
+            "order": 5,
             "scope": "window",
             "markdownDescription": "Keep an open conversation updating **live** while its session keeps writing. Off by default to stay light."
           }
@@ -285,6 +299,13 @@
             "order": 2,
             "scope": "window",
             "markdownDescription": "Also show **automation sessions** — transcripts created by SDK runs such as `/security-review` and background agents, not conversations you had. Off by default: the tree then matches the sessions the official Claude Code panel shows."
+          },
+          "claudeSessionsViewer.timeline.enabled": {
+            "type": "boolean",
+            "default": false,
+            "order": 3,
+            "scope": "window",
+            "markdownDescription": "Show the experimental **Session Timeline** toggle. Off by default while the flat view is being redesigned for a clearer two-column layout."
           }
         }
       }

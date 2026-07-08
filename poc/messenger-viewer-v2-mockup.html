@@ -1,0 +1,814 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Claude Sessions Viewer - Messenger Viewer v2 Mockup</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f7f7;
+      --panel: #ffffff;
+      --line: #dddddd;
+      --fg: #333333;
+      --muted: #707070;
+      --accent: #d97757;
+      --user: #f5ded4;
+      --assistant: #e8e8e8;
+      --chip: #f1f1f1;
+      --search: #fff8d9;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--fg);
+      font: 14px/1.48 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: flex;
+      justify-content: center;
+    }
+
+    .viewer {
+      width: min(820px, 100vw);
+      height: 100vh;
+      background: var(--panel);
+      border-left: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    .head {
+      padding: 10px 16px 8px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.96);
+      backdrop-filter: blur(10px);
+      z-index: 5;
+    }
+
+    .top {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .menu {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font-size: 18px;
+      padding: 2px 3px;
+    }
+
+    .title {
+      min-width: 0;
+      flex: 1;
+      font-size: 17px;
+      font-weight: 680;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 7px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .icon:hover { background: var(--chip); color: var(--fg); }
+
+    .icon.primary {
+      color: var(--accent);
+      border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+      background: color-mix(in srgb, var(--accent) 10%, transparent);
+      font-weight: 700;
+    }
+
+    .meta {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .details {
+      display: none;
+      margin-top: 8px;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fafafa;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .details.open { display: block; }
+
+    .detail-row {
+      display: flex;
+      gap: 8px;
+      align-items: baseline;
+      margin: 3px 0;
+    }
+
+    .detail-row b {
+      color: var(--fg);
+      width: 86px;
+      flex-shrink: 0;
+      font-weight: 600;
+    }
+
+    code.inline {
+      background: #eeeeee;
+      border-radius: 4px;
+      padding: 1px 4px;
+      color: #8a3123;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+    }
+
+    .searchbar {
+      display: grid;
+      grid-template-columns: auto 1fr auto auto auto;
+      gap: 8px;
+      align-items: center;
+      padding: 9px 16px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.95);
+      z-index: 4;
+    }
+
+    .filters {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .chip {
+      border: 1px solid #cccccc;
+      border-radius: 999px;
+      padding: 2px 12px;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .chip.on {
+      color: var(--fg);
+      background: #d8c7df;
+      border-color: #8d7c95;
+    }
+
+    .searchbox {
+      min-width: 120px;
+      height: 28px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 0 11px;
+      font: inherit;
+      color: var(--fg);
+      background: #ffffff;
+    }
+
+    .count {
+      color: var(--muted);
+      font-size: 12px;
+      min-width: 46px;
+      text-align: right;
+    }
+
+    .small-icons {
+      display: flex;
+      gap: 4px;
+    }
+
+    .tiny {
+      width: 26px;
+      height: 26px;
+      border-radius: 7px;
+      border: 1px solid var(--line);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .chat-wrap {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .chat {
+      height: 100%;
+      overflow-y: auto;
+      padding: 16px 54px 18px 18px;
+      scroll-behavior: smooth;
+    }
+
+    .day {
+      position: sticky;
+      top: 8px;
+      z-index: 2;
+      width: max-content;
+      margin: 12px auto;
+      padding: 3px 11px;
+      border-radius: 999px;
+      background: rgba(245, 245, 245, 0.96);
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 11px;
+      box-shadow: 0 2px 9px rgba(0, 0, 0, 0.05);
+    }
+
+    .msg {
+      max-width: 78%;
+      width: fit-content;
+      margin: 9px 0;
+      padding: 9px 12px;
+      border-radius: 13px;
+      white-space: normal;
+      overflow-wrap: break-word;
+      position: relative;
+    }
+
+    .msg.user {
+      margin-left: auto;
+      background: var(--user);
+      border-bottom-right-radius: 4px;
+    }
+
+    .msg.assistant {
+      margin-right: auto;
+      background: var(--assistant);
+      border-bottom-left-radius: 4px;
+    }
+
+    .who {
+      display: none;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+      letter-spacing: 0.02em;
+      margin-bottom: 3px;
+    }
+
+    .msg p {
+      margin: 0 0 7px;
+    }
+
+    .msg p:last-child { margin-bottom: 0; }
+
+    .msg ul, .msg ol {
+      margin: 6px 0 6px 18px;
+      padding: 0;
+    }
+
+    .msg h3 {
+      margin: 4px 0 6px;
+      font-size: 15px;
+      line-height: 1.25;
+    }
+
+    .quote {
+      border-left: 3px solid var(--accent);
+      background: rgba(255, 255, 255, 0.38);
+      padding: 5px 8px;
+      border-radius: 6px;
+      margin: 6px 0;
+      color: #565656;
+    }
+
+    pre {
+      margin: 8px 0;
+      padding: 9px 10px;
+      border-radius: 8px;
+      background: #2b2b2b;
+      color: #eeeeee;
+      overflow-x: auto;
+      font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+      position: relative;
+    }
+
+    .code-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      color: #b9b9b9;
+      font-size: 11px;
+      margin-bottom: 5px;
+    }
+
+    .copy-code {
+      border: 1px solid #555;
+      border-radius: 5px;
+      background: transparent;
+      color: #dcdcdc;
+      font: inherit;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    .table-wrap {
+      max-width: 100%;
+      overflow-x: auto;
+      margin: 8px 0;
+      border: 1px solid #cfcfcf;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.45);
+    }
+
+    table {
+      border-collapse: collapse;
+      min-width: 420px;
+      width: 100%;
+      font-size: 12px;
+    }
+
+    th, td {
+      border-bottom: 1px solid #d9d9d9;
+      padding: 5px 7px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: rgba(0, 0, 0, 0.04);
+      font-weight: 650;
+    }
+
+    mark {
+      background: var(--search);
+      color: inherit;
+      border-radius: 3px;
+      padding: 0 1px;
+      box-shadow: 0 0 0 1px rgba(217, 151, 39, 0.22);
+    }
+
+    mark.current {
+      background: #ffd36a;
+      box-shadow: 0 0 0 2px rgba(217, 119, 87, 0.45);
+    }
+
+    .read-more {
+      display: block;
+      margin-top: 6px;
+      border: 0;
+      padding: 0;
+      background: transparent;
+      color: var(--accent);
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .read-more:hover { text-decoration: underline; }
+
+    .rail {
+      position: absolute;
+      right: 13px;
+      top: 16px;
+      bottom: 18px;
+      width: 3px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.08);
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .rail-fill {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 3px;
+      height: var(--rail-top, 0%);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--accent) 55%, transparent);
+      opacity: 0.7;
+    }
+
+    .rail-thumb {
+      position: absolute;
+      left: -3px;
+      top: var(--rail-top, 0%);
+      width: 9px;
+      height: 46px;
+      margin-top: -23px;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 1px 7px rgba(0, 0, 0, 0.22);
+      opacity: 0.82;
+    }
+
+    .position-pill {
+      position: absolute;
+      right: 28px;
+      top: var(--rail-top, 0%);
+      transform: translateY(-50%);
+      background: rgba(55, 55, 55, 0.94);
+      color: #ffffff;
+      border-radius: 999px;
+      padding: 4px 9px;
+      font-size: 11px;
+      line-height: 1.2;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 160ms ease;
+      z-index: 6;
+    }
+
+    .chat-wrap.scrolling .position-pill,
+    .chat-wrap:hover .position-pill {
+      opacity: 1;
+    }
+
+    .jump {
+      position: absolute;
+      right: 20px;
+      bottom: 16px;
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.96);
+      color: var(--muted);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+      cursor: pointer;
+      z-index: 7;
+    }
+
+    @media (max-width: 620px) {
+      .searchbar { grid-template-columns: 1fr auto; }
+      .filters { grid-column: 1 / -1; }
+      .count { text-align: left; }
+      .chat { padding-right: 46px; }
+      .msg { max-width: 86%; }
+      .title { font-size: 15px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="viewer">
+    <header class="head">
+      <div class="top">
+        <button class="menu" title="Navigation">=</button>
+        <div class="title">Reinstall extension after uninstall</div>
+        <div class="actions">
+          <button class="icon primary" title="Resume in terminal">▶</button>
+          <button class="icon" title="Copy session reference">⧉</button>
+          <button class="icon" title="Export Markdown">↓</button>
+          <button class="icon" title="Open raw JSON">{}</button>
+          <button class="icon" id="detailsBtn" title="Details">⌄</button>
+        </div>
+      </div>
+      <div class="meta">claude-sessions-viewer · 273 messages · 06 Jul 2026 17:39 -> 08 Jul 2026 13:37</div>
+      <div class="details" id="details">
+        <div class="detail-row"><b>session</b><span><code class="inline">aecfe794-a30f-42d5-b1b2-850b49b087fb</code></span></div>
+        <div class="detail-row"><b>raw JSON</b><span><code class="inline">~/.claude/projects/.../aecfe794-a30f-42d5-b1b2-850b49b087fb.jsonl</code></span></div>
+        <div class="detail-row"><b>started in</b><span><code class="inline">~/yury-vibe-coding/claude-sessions-viewer</code></span></div>
+        <div class="detail-row"><b>actions</b><span>copy id · copy session reference · open raw JSON</span></div>
+      </div>
+    </header>
+
+    <section class="searchbar">
+      <div class="filters">
+        <button class="chip on" data-role="all">All</button>
+        <button class="chip" data-role="user">Me</button>
+        <button class="chip" data-role="assistant">Claude</button>
+      </div>
+      <input class="searchbox" id="search" placeholder="Search inside this session">
+      <div class="count" id="count">0 / 0</div>
+      <div class="small-icons">
+        <button class="tiny" id="prev" title="Previous match">↑</button>
+        <button class="tiny" id="next" title="Next match">↓</button>
+      </div>
+      <button class="tiny" id="clear" title="Clear search">x</button>
+    </section>
+
+    <section class="chat-wrap" id="wrap">
+      <div class="chat" id="chat"></div>
+      <div class="rail" aria-hidden="true">
+        <div class="rail-fill" id="railFill"></div>
+        <div class="rail-thumb" id="railThumb"></div>
+      </div>
+      <div class="position-pill" id="posPill">msg 1 / 273</div>
+      <button class="jump" id="jump" title="Jump to latest">↓</button>
+    </section>
+  </main>
+
+  <script>
+    const chat = document.getElementById('chat');
+    const wrap = document.getElementById('wrap');
+    const pill = document.getElementById('posPill');
+    const railFill = document.getElementById('railFill');
+    const railThumb = document.getElementById('railThumb');
+    const searchInput = document.getElementById('search');
+    const count = document.getElementById('count');
+    const DISPLAY_CAP = 620;
+    const total = 273;
+    const expanded = new Set();
+    let currentRole = 'all';
+    let matches = [];
+    let currentMatch = 0;
+    let scrollTimer = 0;
+
+    const longUser = `Ok, I want you to update the global instructions and really for this project review. I want this session to be safe, readable, and easy to scan later. The point is not to manage sessions aggressively, but to understand what happened, where the work was happening, and which conversation I need to open again.
+
+I care about the viewer feeling like a messenger. Long inputs should not dominate the screen. I want the first lines, then I decide if I need the rest. When I scroll through history, I want to know approximately where I am in the whole conversation, without a heavy timeline mode or another complicated sidebar.`;
+
+    const longAssistant = `### What changed
+
+The current viewer is technically a chat layout, but not yet a messenger-grade reading surface. It opens at the latest message, which is correct, but long blocks still occupy too much visual space.
+
+> The right-side rail should stay passive. Its job is orientation, not navigation control.
+
+The better behavior is progressive disclosure: short messages stay normal, long messages collapse, and the user expands only the message they need.`;
+
+    const codeAssistant = `Here is the safer rendering approach:
+
+\`\`\`js
+function isLongMessage(message) {
+  return message.text.length > 620 || message.text.split('\\n').length > 8;
+}
+\`\`\`
+
+The code block should stay inside the bubble and scroll horizontally if needed.`;
+
+    const tableAssistant = `A compact table should render inside the bubble:
+
+| Area | Decision | Why |
+| --- | --- | --- |
+| Tools | Remove from top UI | Raw JSON is enough for deep debug |
+| Plain flow | Remove | Export Markdown covers this need |
+| Search | Add inside session | This is how you find exact prompts |`;
+
+    function dayFor(i) {
+      if (i < 74) return '06 JUL 2026';
+      if (i < 184) return '07 JUL 2026';
+      return '08 JUL 2026';
+    }
+
+    function roleFor(i) {
+      if (i % 9 === 0) return 'user';
+      if (i % 9 === 1) return 'assistant';
+      if (i % 5 === 0) return 'assistant';
+      return i % 2 === 0 ? 'assistant' : 'user';
+    }
+
+    function textFor(i, role) {
+      if (i === 42 || i === 128 || i === 206) return role === 'user' ? longUser : longAssistant;
+      if (i === 58) return codeAssistant;
+      if (i === 164) return tableAssistant;
+      if (i % 11 === 0) return role === 'user'
+        ? 'Can you inspect this part and tell me what is actually happening before we change anything? I want search and safe reading.'
+        : 'I inspected the current behavior. The safer change is to keep the tree simple and improve the webview reading experience first.';
+      if (role === 'user') return 'Please look at this session and help me understand what changed.';
+      return 'The session is indexed and the viewer can show it as a read-only conversation.';
+    }
+
+    const messages = Array.from({ length: total }, (_, i) => {
+      const role = roleFor(i);
+      return { i, role, day: dayFor(i), text: textFor(i, role) };
+    });
+
+    function esc(s) {
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function renderMarkdown(text) {
+      const parts = text.split(/(```[\\s\\S]*?```)/g);
+      let html = '';
+      for (const part of parts) {
+        if (part.startsWith('```')) {
+          const code = part.replace(/^```\\w*\\n?/, '').replace(/```$/, '');
+          html += '<pre><div class="code-label"><span>code</span><button class="copy-code">copy</button></div><code>' + esc(code) + '</code></pre>';
+          continue;
+        }
+        html += renderSimpleMarkdown(part);
+      }
+      return html;
+    }
+
+    function renderSimpleMarkdown(text) {
+      const lines = text.split('\\n');
+      let html = '';
+      let i = 0;
+      while (i < lines.length) {
+        const line = lines[i];
+        if (!line.trim()) { i++; continue; }
+        if (line.startsWith('### ')) {
+          html += '<h3>' + esc(line.slice(4)) + '</h3>';
+          i++;
+          continue;
+        }
+        if (line.startsWith('> ')) {
+          html += '<div class="quote">' + esc(line.slice(2)) + '</div>';
+          i++;
+          continue;
+        }
+        if (line.includes('|') && i + 2 < lines.length && lines[i + 1].includes('---')) {
+          const headers = line.split('|').map(c => c.trim()).filter(Boolean);
+          i += 2;
+          const rows = [];
+          while (i < lines.length && lines[i].includes('|')) {
+            rows.push(lines[i].split('|').map(c => c.trim()).filter(Boolean));
+            i++;
+          }
+          html += '<div class="table-wrap"><table><thead><tr>' + headers.map(h => '<th>' + esc(h) + '</th>').join('') + '</tr></thead><tbody>' +
+            rows.map(r => '<tr>' + r.map(c => '<td>' + esc(c) + '</td>').join('') + '</tr>').join('') +
+            '</tbody></table></div>';
+          continue;
+        }
+        const para = [];
+        while (i < lines.length && lines[i].trim() && !lines[i].startsWith('### ') && !lines[i].startsWith('> ')) {
+          para.push(lines[i]);
+          i++;
+        }
+        html += '<p>' + esc(para.join('\\n')).replace(/`([^`]+)`/g, '<code class="inline">$1</code>') + '</p>';
+      }
+      return html;
+    }
+
+    function applySearch(html, query, msgIndex) {
+      if (!query) return html;
+      const lower = messages[msgIndex].text.toLowerCase();
+      if (!lower.includes(query.toLowerCase())) return html;
+      const safe = query.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
+      return html.replace(new RegExp('(' + safe + ')', 'gi'), '<mark>$1</mark>');
+    }
+
+    function render() {
+      let lastDay = '';
+      chat.innerHTML = '';
+      const frag = document.createDocumentFragment();
+      const query = searchInput.value.trim();
+
+      for (const m of messages) {
+        if (currentRole !== 'all' && m.role !== currentRole) continue;
+        if (m.day !== lastDay) {
+          const day = document.createElement('div');
+          day.className = 'day';
+          day.textContent = m.day;
+          frag.appendChild(day);
+          lastDay = m.day;
+        }
+
+        const bubble = document.createElement('div');
+        bubble.className = 'msg ' + m.role;
+        bubble.dataset.index = m.i;
+        bubble.dataset.day = m.day;
+
+        const isLong = m.text.length > DISPLAY_CAP;
+        const isOpen = expanded.has(m.i);
+        let visibleText = isLong && !isOpen ? m.text.slice(0, DISPLAY_CAP).trimEnd() + '...' : m.text;
+        bubble.innerHTML = applySearch(renderMarkdown(visibleText), query, m.i);
+
+        if (isLong) {
+          const more = document.createElement('button');
+          more.className = 'read-more';
+          more.textContent = isOpen ? 'Show less' : 'Read more';
+          more.onclick = () => {
+            if (expanded.has(m.i)) expanded.delete(m.i);
+            else expanded.add(m.i);
+            const oldTop = chat.scrollTop;
+            render();
+            chat.scrollTop = oldTop;
+            updateRail();
+          };
+          bubble.appendChild(more);
+        }
+
+        frag.appendChild(bubble);
+      }
+
+      chat.appendChild(frag);
+      updateMatches(false);
+    }
+
+    function updateMatches(jump) {
+      const query = searchInput.value.trim().toLowerCase();
+      matches = [];
+      if (query) {
+        for (const bubble of chat.querySelectorAll('.msg')) {
+          const index = Number(bubble.dataset.index);
+          if (messages[index].text.toLowerCase().includes(query)) matches.push(index);
+        }
+      }
+      if (!matches.length) {
+        currentMatch = 0;
+        count.textContent = query ? '0 / 0' : '0 / 0';
+        return;
+      }
+      currentMatch = Math.min(currentMatch, matches.length - 1);
+      count.textContent = (currentMatch + 1) + ' / ' + matches.length;
+      chat.querySelectorAll('mark').forEach(m => m.classList.remove('current'));
+      const targetBubble = chat.querySelector('.msg[data-index="' + matches[currentMatch] + '"]');
+      if (targetBubble) {
+        const firstMark = targetBubble.querySelector('mark');
+        if (firstMark) firstMark.classList.add('current');
+        if (jump) targetBubble.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    }
+
+    function currentMessage() {
+      const bubbles = Array.from(chat.querySelectorAll('.msg'));
+      const target = chat.getBoundingClientRect().top + chat.clientHeight * 0.42;
+      let current = bubbles[0];
+      for (const bubble of bubbles) {
+        if (bubble.getBoundingClientRect().top <= target) current = bubble;
+        else break;
+      }
+      return current;
+    }
+
+    function updateRail() {
+      const max = Math.max(1, chat.scrollHeight - chat.clientHeight);
+      const progress = Math.min(1, Math.max(0, chat.scrollTop / max));
+      const top = (progress * 100).toFixed(2) + '%';
+      railFill.style.setProperty('--rail-top', top);
+      railThumb.style.setProperty('--rail-top', top);
+      pill.style.setProperty('--rail-top', top);
+
+      const current = currentMessage();
+      const index = current ? Number(current.dataset.index) + 1 : 1;
+      const day = current ? current.dataset.day.replace(' JUL ', ' Jul ') : '';
+      pill.textContent = day + ' · msg ' + index + ' / ' + total;
+
+      wrap.classList.add('scrolling');
+      clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(() => wrap.classList.remove('scrolling'), 850);
+    }
+
+    document.getElementById('detailsBtn').onclick = () => {
+      const details = document.getElementById('details');
+      details.classList.toggle('open');
+      document.getElementById('detailsBtn').textContent = details.classList.contains('open') ? '⌃' : '⌄';
+    };
+
+    document.querySelectorAll('[data-role]').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('[data-role]').forEach(b => b.classList.remove('on'));
+        btn.classList.add('on');
+        currentRole = btn.dataset.role;
+        currentMatch = 0;
+        render();
+        updateRail();
+      };
+    });
+
+    searchInput.oninput = () => {
+      currentMatch = 0;
+      render();
+    };
+    document.getElementById('next').onclick = () => {
+      if (!matches.length) return;
+      currentMatch = (currentMatch + 1) % matches.length;
+      updateMatches(true);
+    };
+    document.getElementById('prev').onclick = () => {
+      if (!matches.length) return;
+      currentMatch = (currentMatch - 1 + matches.length) % matches.length;
+      updateMatches(true);
+    };
+    document.getElementById('clear').onclick = () => {
+      searchInput.value = '';
+      currentMatch = 0;
+      render();
+      searchInput.focus();
+    };
+    document.getElementById('jump').onclick = () => {
+      chat.scrollTop = chat.scrollHeight;
+      updateRail();
+    };
+
+    chat.addEventListener('scroll', updateRail, { passive: true });
+    window.addEventListener('resize', updateRail);
+
+    render();
+    chat.scrollTop = chat.scrollHeight;
+    updateRail();
+  </script>
+</body>
+</html>

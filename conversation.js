@@ -89,10 +89,10 @@ async function extractConversation(jsonlPath) {
 }
 
 // Render the conversation as plain markdown-ish text (for copy / export).
-// opts: { title, folder, userLabel, names (bool), filter ('all'|'user'|'assistant'), withTools }
+// opts: { title, folder, userLabel, agentLabel, names (bool), filter ('all'|'user'|'assistant'), withTools }
 function conversationToText(convo, opts) {
   const o = Object.assign(
-    { title: '', folder: '', userLabel: 'USER', names: true, filter: 'all', withTools: false },
+    { title: '', folder: '', userLabel: 'USER', agentLabel: 'CLAUDE', names: true, filter: 'all', withTools: false },
     opts
   );
   const lines = [];
@@ -103,7 +103,7 @@ function conversationToText(convo, opts) {
       continue;
     }
     if (o.filter !== 'all' && m.role !== o.filter) continue;
-    const label = m.role === 'user' ? o.userLabel : 'CLAUDE';
+    const label = m.role === 'user' ? o.userLabel : o.agentLabel;
     lines.push(o.names ? `**${label}:** ${m.text}` : m.text, '');
   }
   return lines.join('\n').trim() + '\n';
