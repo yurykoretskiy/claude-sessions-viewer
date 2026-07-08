@@ -41,7 +41,7 @@ class ConversationViewer {
       agentLabel: c.get('agentLabel', 'CLAUDE'),
       showNames: c.get('showNames', true),
       liveRefresh: c.get('liveRefresh.enabled', false),
-      viewerDensity: c.get('viewerDensity', 'read'),
+      viewerDensity: c.get('viewerDensity', 'full'),
     };
   }
 
@@ -193,7 +193,7 @@ class ConversationViewer {
           await c.update('agentLabel', msg.agentLabel || 'CLAUDE', vscode.ConfigurationTarget.Global);
         if (msg.showNames !== undefined)
           await c.update('showNames', !!msg.showNames, vscode.ConfigurationTarget.Global);
-        if (msg.viewerDensity === 'read' || msg.viewerDensity === 'scan')
+        if (msg.viewerDensity === 'full' || msg.viewerDensity === 'short')
           await c.update('viewerDensity', msg.viewerDensity, vscode.ConfigurationTarget.Global);
         break;
       }
@@ -210,7 +210,7 @@ class ConversationViewer {
       agentLabel: cfg.agentLabel,
       showNames: cfg.showNames,
       theme: cfg.theme,
-      density: cfg.viewerDensity === 'scan' ? 'scan' : 'read',
+      density: cfg.viewerDensity === 'short' ? 'short' : 'full',
       window: RENDER_WINDOW,
       sessionId: session.id,
       rawPath: session.file,
@@ -300,16 +300,9 @@ class ConversationViewer {
   .day { width:max-content; margin:12px auto; position:sticky; top:8px; z-index:2; color:var(--mut); font-size:11px;
     background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:2px 10px;
     box-shadow:0 2px 9px rgba(0,0,0,.05); }
-  .row { display:flex; align-items:center; gap:8px; padding:3px 10px; margin:1px 0; border-radius:6px; cursor:pointer; }
-  .row:hover { background:var(--btn2); }
-  .row.user { border-left:3px solid var(--user-strong); padding-left:9px; }
-  .row.assistant { border-left:3px solid var(--agent-strong); padding-left:9px; }
-  .row-text { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:0.92em; color:var(--fg); }
-  .row-time { flex:0 0 auto; color:var(--mut); font-size:0.75em; font-variant-numeric:tabular-nums; }
-  .fold-row { cursor:pointer; color:var(--mut); margin-right:4px; }
-  .fold-row:hover { color:var(--fg); }
-  body[data-density="scan"] .msg .who { cursor:pointer; }
   .msg { max-width:78%; width:fit-content; margin:9px 0; padding:9px 12px; border-radius:13px; overflow-wrap:break-word; position:relative; }
+  .msg.folded { cursor:pointer; margin:4px 0; padding:6px 10px; }
+  .msg.folded .body { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; }
   .msg.user { margin-left:auto; background:var(--user-bub); border-right:3px solid var(--user-strong); border-bottom-right-radius:4px; }
   .msg.assistant { margin-right:auto; background:var(--agent-bub); border-left:3px solid var(--agent-strong); border-bottom-left-radius:4px; }
   .who { font-size:11px; color:var(--mut); margin-bottom:3px; letter-spacing:.02em; font-weight:700; text-transform:uppercase; }
@@ -369,7 +362,7 @@ class ConversationViewer {
   }
 </style>
 </head>
-<body class="sys" data-names="${cfg.showNames ? 'on' : 'off'}" data-density="${cfg.viewerDensity === 'scan' ? 'scan' : 'read'}">
+<body class="sys" data-names="${cfg.showNames ? 'on' : 'off'}" data-density="${cfg.viewerDensity === 'short' ? 'short' : 'full'}">
 <main class="viewer">
   <div class="vhead">
     <div class="vrow">
@@ -385,8 +378,8 @@ class ConversationViewer {
       <button class="seg" data-f="assistant" id="chipAgent">${esc(cfg.agentLabel)}</button>
     </div>
     <div class="segmented" id="densitySeg">
-      <button class="seg${cfg.viewerDensity === 'scan' ? '' : ' on'}" data-d="read">Read</button>
-      <button class="seg${cfg.viewerDensity === 'scan' ? ' on' : ''}" data-d="scan">Scan</button>
+      <button class="seg${cfg.viewerDensity === 'short' ? ' on' : ''}" data-d="short">Short</button>
+      <button class="seg${cfg.viewerDensity === 'short' ? '' : ' on'}" data-d="full">Full</button>
     </div>
     <span class="spacer"></span>
     <button class="ibtn" id="searchToggle" aria-label="Search" data-tip="Search">⌕</button>
@@ -426,13 +419,13 @@ const vscodeApi = acquireVsCodeApi();
 const DATA = ${data};
 const DISPLAY_CAP = 700;
 let filter = 'all';
-let density = DATA.density === 'scan' ? 'scan' : 'read';
+let density = DATA.density === 'short' ? 'short' : 'full';
 let renderAll = DATA.messages.length <= DATA.window * 1.2;
 let currentMatch = 0;
 let matches = [];
 let scrollTimer = 0;
 const expandedMessages = new Set();
-const scanExpanded = new Set();
+const unfolded = new Set();
 const $ = id => document.getElementById(id);
 const escHtml = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
@@ -659,7 +652,7 @@ function render(keepScroll) {
   $('chipAgent').textContent = l.agent;
   matches = collectMatches();
   currentMatch = Math.min(currentMatch, Math.max(0, matches.length - 1));
-  if (density === 'scan' && $('search').value.trim()) matches.forEach(i => scanExpanded.add(i));
+  if (density === 'short' && $('search').value.trim()) matches.forEach(i => unfolded.add(i));
   chat.innerHTML = '';
   const msgs = DATA.messages;
   if (!msgs.some(m => m.role !== 'tool')) {
@@ -683,21 +676,14 @@ function render(keepScroll) {
     if (m.role === 'tool') continue;
     if (filter !== 'all' && m.role !== filter) continue;
     if (day && day !== lastDay && filter === 'all') { frag.push('<div class="day">' + day + '</div>'); lastDay = day; }
-    if (density === 'scan' && !scanExpanded.has(i)) {
-      const preview = String(m.text || '').replace(/\s+/g, ' ').trim();
-      const short = preview.length > 100 ? preview.slice(0, 100) + '…' : preview;
-      const timeLabel = m.ts ? new Date(m.ts).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' }) : '';
-      const rowHtml = highlightHtml(escHtml(short), $('search').value.trim(), matches[currentMatch] === i);
-      frag.push('<div class="row ' + m.role + '" data-i="' + i + '" data-day="' + (day || '') + '"><span class="row-text">' + rowHtml + '</span><span class="row-time">' + escHtml(timeLabel) + '</span></div>');
-      continue;
-    }
     const who = m.role === 'user' ? l.user : l.agent;
     const body = renderMessageBody(m, i, matches[currentMatch] === i);
     const icon = m.role === 'user' ? '●' : '✳';
     const attachments = renderAttachments(m.attachments);
     const more = body.long ? '<span class="more" data-i="' + i + '">' + (expandedMessages.has(i) ? 'Show less' : 'Read more') + '</span>' : '';
-    const foldBtn = density === 'scan' ? '<span class="fold-row" data-i="' + i + '">⌃</span>' : '';
-    frag.push('<div class="msg ' + m.role + '" data-i="' + i + '" data-day="' + (day || '') + '"><div class="who">' + foldBtn + '<span class="role-icon">' + icon + '</span>' + escHtml(who) + '</div>' + attachments + '<div class="body">' + body.html + '</div>' + more + '</div>');
+    const folded = density === 'short' && !unfolded.has(i);
+    const foldedClass = folded ? ' folded' : '';
+    frag.push('<div class="msg ' + m.role + foldedClass + '" data-i="' + i + '" data-day="' + (day || '') + '"><div class="who"><span class="role-icon">' + icon + '</span>' + escHtml(who) + '</div>' + attachments + '<div class="body">' + body.html + '</div>' + more + '</div>');
   }
   frag.push('<div class="bottom-spacer" aria-hidden="true"></div>');
   chat.insertAdjacentHTML('beforeend', frag.join(''));
@@ -715,12 +701,14 @@ function render(keepScroll) {
     const code = btn.closest('pre').querySelector('code');
     if (code) navigator.clipboard.writeText(code.textContent).catch(() => {});
   });
-  if (density === 'scan') {
-    chat.querySelectorAll('.row').forEach(el => el.onclick = () => { scanExpanded.add(+el.dataset.i); render(true); });
-    chat.querySelectorAll('.fold-row').forEach(el => el.onclick = (e) => { e.stopPropagation(); scanExpanded.delete(+el.dataset.i); render(true); });
-    chat.querySelectorAll('.msg .who').forEach(el => el.onclick = () => {
-      const row = el.closest('.msg');
-      if (row) { scanExpanded.delete(+row.dataset.i); render(true); }
+  if (density === 'short') {
+    chat.querySelectorAll('.msg').forEach(el => {
+      const i = +el.dataset.i;
+      el.onclick = (e) => {
+        if (e.target.closest('a[data-href], .attach, .more, .copy-code')) return;
+        if (el.classList.contains('folded')) { unfolded.add(i); render(true); }
+        else if (e.target.closest('.who')) { unfolded.delete(i); render(true); }
+      };
     });
   }
   updateMatches(false);
@@ -747,7 +735,7 @@ function updateMatches(jump) {
 }
 
 function currentMessage() {
-  const bubbles = Array.from($('chat').querySelectorAll('.msg, .row'));
+  const bubbles = Array.from($('chat').querySelectorAll('.msg'));
   const target = $('chat').getBoundingClientRect().top + $('chat').clientHeight * 0.42;
   let current = bubbles[0];
   for (const bubble of bubbles) {
@@ -809,7 +797,7 @@ $('userLabel').oninput = () => { render(true); vscodeApi.postMessage({ type:'set
 $('agentLabel').oninput = () => { render(true); vscodeApi.postMessage({ type:'setConfig', agentLabel: $('agentLabel').value }); };
 $('search').oninput = () => {
   currentMatch = 0;
-  if (density === 'scan' && !$('search').value.trim()) scanExpanded.clear();
+  if (density === 'short' && !$('search').value.trim()) unfolded.clear();
   render(true);
 };
 $('next').onclick = () => { if (!matches.length) return; currentMatch = (currentMatch + 1) % matches.length; render(true); updateMatches(true); };
@@ -817,7 +805,7 @@ $('prev').onclick = () => { if (!matches.length) return; currentMatch = (current
 $('clearSearch').onclick = () => {
   if ($('search').value) {
     $('search').value = '';
-    if (density === 'scan') scanExpanded.clear();
+    if (density === 'short') unfolded.clear();
     render(true);
     $('search').focus();
   } else {
@@ -831,7 +819,7 @@ document.querySelectorAll('[data-d]').forEach(b => b.onclick = () => {
   b.classList.add('on');
   density = b.dataset.d;
   document.body.dataset.density = density;
-  scanExpanded.clear();
+  unfolded.clear();
   vscodeApi.postMessage({ type:'setConfig', viewerDensity: density });
   render(true);
 });

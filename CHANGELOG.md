@@ -6,6 +6,29 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.13.0] — 2026-07-09
+
+### Changed
+- **Replaced Scan mode with Short/Full fold.** Scan's one-line text previews
+  are gone entirely — Short mode now renders every message exactly like Full
+  mode and clamps the bubble to 2 lines with pure CSS (`-webkit-line-clamp`).
+  Click a folded bubble to unfold it in place (real markdown, code, links,
+  attachments — nothing is a text preview); click its name header to fold it
+  back. The density toggle and the `claudeSessionsViewer.viewerDensity`
+  setting are renamed `Short`/`Full` (`short`/`full`), default `Full`. Any
+  older `read`/`scan` value from a previous release is silently treated as
+  `full`. Search auto-unfolds matching messages in Short mode and folds
+  everything back when the search is cleared, same as Scan's search behavior.
+
+### Fixed
+- Scan mode (v1.12.0) built its one-line previews with
+  `replace(/\s+/g, ' ')` written directly inside the webview's embedded
+  template literal, where an un-doubled backslash silently drops — so the
+  browser actually ran `replace(/s+/g, ' ')` and every letter "s" was deleted
+  from every preview. Previews are gone as of this release, so the bug class
+  is structurally impossible; a regression test now also fails the build if a
+  degraded `/s+/` regex ever reappears in the generated script.
+
 ## [1.12.0] — 2026-07-08
 
 ### Added

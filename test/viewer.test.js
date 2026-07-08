@@ -149,7 +149,7 @@ test('generated webview script is valid JavaScript', () => {
   assert.doesNotThrow(() => new vm.Script(script[1]));
 });
 
-test('generated HTML contains the density toggle and scan-mode CSS', () => {
+test('generated HTML contains the Short/Full toggle and line-clamp CSS, no scan-row markup', () => {
   const viewer = new ConversationViewer({});
   const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };
   const html = viewer.html({
@@ -162,10 +162,34 @@ test('generated HTML contains the density toggle and scan-mode CSS', () => {
     title: 'T',
     folder: 'F',
   });
-  assert.match(html, /data-d="read"/);
-  assert.match(html, /data-d="scan"/);
-  assert.match(html, /\.row-text/);
-  assert.match(html, /\.row-time/);
+  assert.match(html, /data-d="short"/);
+  assert.match(html, /data-d="full"/);
+  assert.match(html, /-webkit-line-clamp:2/);
+  assert.doesNotMatch(html, /\.row-text/);
+  assert.doesNotMatch(html, /\.row-time/);
+});
+
+test('escaping-trap regression: no degraded /s+/ regex survives the template literal', () => {
+  // v1.12.0 wrote replace(/\s+/g, ' ') inside the embedded webview template
+  // literal without doubling the backslash. Template literals silently turn
+  // \s into s, so the browser received replace(/s+/g, ' ') and every letter
+  // "s" vanished from Scan previews. Scan is gone, but this guards against
+  // the same escaping mistake recurring anywhere in the generated script.
+  const viewer = new ConversationViewer({});
+  const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };
+  const html = viewer.html({
+    session,
+    convo: {
+      firstTs: '2026-01-01T10:00:00Z',
+      lastTs: '2026-01-01T10:00:05Z',
+      messages: [{ role: 'user', text: 'hello world', ts: '2026-01-01T10:00:00Z' }],
+    },
+    title: 'T',
+    folder: 'F',
+  });
+  const script = html.match(/<script nonce="[^"]+">([\s\S]*)<\/script>/)[1];
+  assert.doesNotMatch(script, /\/s\+\//);
+  assert.doesNotMatch(script, /replace\(\/s\+\//);
 });
 
 test('a <script> payload inside message text renders escaped, not as a live tag', () => {
@@ -188,7 +212,7 @@ test('a <script> payload inside message text renders escaped, not as a live tag'
   assert.match(html, /\\u003cscript>alert\(1\)\\u003c\/script>/);
 });
 
-test('setConfig accepts and persists viewerDensity (rejects unknown values)', async () => {
+test('setConfig persists viewerDensity full/short, ignores scan/read/bogus', async () => {
   const viewer = new ConversationViewer({});
   const updates = [];
   const origGetConfiguration = fakeVscode.workspace.getConfiguration;
@@ -200,12 +224,18 @@ test('setConfig accepts and persists viewerDensity (rejects unknown values)', as
     const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };
     const entry = { session, convo: { messages: [] }, title: 'T', folder: 'F' };
 
-    await viewer.onMessage(entry, { type: 'setConfig', viewerDensity: 'scan' });
-    assert.deepStrictEqual(updates.find((u) => u[0] === 'viewerDensity'), ['viewerDensity', 'scan']);
+    await viewer.onMessage(entry, { type: 'setConfig', viewerDensity: 'short' });
+    assert.deepStrictEqual(updates.find((u) => u[0] === 'viewerDensity'), ['viewerDensity', 'short']);
 
     updates.length = 0;
-    await viewer.onMessage(entry, { type: 'setConfig', viewerDensity: 'bogus' });
-    assert.strictEqual(updates.find((u) => u[0] === 'viewerDensity'), undefined);
+    await viewer.onMessage(entry, { type: 'setConfig', viewerDensity: 'full' });
+    assert.deepStrictEqual(updates.find((u) => u[0] === 'viewerDensity'), ['viewerDensity', 'full']);
+
+    for (const rejected of ['scan', 'read', 'bogus']) {
+      updates.length = 0;
+      await viewer.onMessage(entry, { type: 'setConfig', viewerDensity: rejected });
+      assert.strictEqual(updates.find((u) => u[0] === 'viewerDensity'), undefined, `should ignore '${rejected}'`);
+    }
   } finally {
     fakeVscode.workspace.getConfiguration = origGetConfiguration;
   }

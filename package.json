@@ -2,7 +2,7 @@
   "name": "claude-sessions-viewer",
   "displayName": "Claude Sessions Viewer",
   "description": "Read Claude Code sessions like chat: locate current work, review history, export Markdown. Read-only, local, zero dependencies.",
-  "version": "1.12.0",
+  "version": "1.13.0",
   "publisher": "yurykoretskiy",
   "license": "MIT",
   "engines": {
@@ -283,17 +283,17 @@
           "claudeSessionsViewer.viewerDensity": {
             "type": "string",
             "enum": [
-              "read",
-              "scan"
+              "full",
+              "short"
             ],
             "enumDescriptions": [
-              "Full message bubbles, exactly as today.",
-              "One line per message so you can scroll a long session in seconds; click a row to expand it in place."
+              "Every message renders as a full bubble, exactly as today.",
+              "Every message is clamped to 2 lines; click a bubble to unfold it in place, click its name header to fold it back."
             ],
-            "default": "read",
+            "default": "full",
             "order": 6,
             "scope": "window",
-            "markdownDescription": "Density of the conversation viewer. New panels open with this setting; toggling **Scan/Read** in the viewer updates it."
+            "markdownDescription": "Density of the conversation viewer. New panels open with this setting; toggling **Short/Full** in the viewer updates it. Any older value from a previous release is treated as **Full**."
           }
         }
       },

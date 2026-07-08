@@ -116,3 +116,29 @@
 6. Revealed-session marker and collapse behavior.
 7. Code/quote rendering.
 8. Marketplace screenshot/readme refresh.
+9. Smart resume — "Resume in Claude panel": official extension exposes
+   `claude-vscode.editor.open(sessionId, prompt, viewColumn)` (verified in
+   bundle v2.1.204, flows to `--resume`). Two actions: run-in-terminal
+   (always works) + run-in-panel (when official ext installed AND session
+   cwd matches current workspace; fallback = terminal). Offer from tree row
+   and from opened viewer panel. Undocumented API — guard with
+   getCommands() + try/catch. Mention in extension description when shipped.
+10. Pre-publish CHANGELOG squash — collapse the pre-Marketplace churn
+    (esp. Scan added in 1.12.0 → removed in 1.13.0; micro-versions) into a
+    few honest, user-relevant entries. Nobody has installed anything yet,
+    so pre-publish history can be curated. Do it as the LAST step before
+    `vsce publish`.
+11. README images broken in local extension details page — root cause
+    found (09 Jul): PNGs ARE in the vsix and tracked in git, paths are
+    relative and correct; VS Code's details page fails to resolve relative
+    paths for sideloaded extensions. Fix: package with
+    `--baseImagesUrl https://raw.githubusercontent.com/yurykoretskiy/claude-sessions-viewer/master`
+    (add to build-vsix.sh) so the packaged readme carries absolute URLs.
+    Verify on all 3 surfaces after: local details page, GitHub, Marketplace.
+12. README/details rewrite — shorten hard. Voice: peer-to-peer, "why I
+    built this" usability narrative, NOT marketing/LinkedIn-ish. Two
+    anchors: (a) each feature exists because of a real workflow need —
+    say the need; (b) safety: read-only by design, zero write access,
+    CI-proven. Hero GIF + 2-3 screenshots carry the visual load; text gets
+    much shorter. Fable drafts, Yury tunes the voice. Pairs with 10 + 11
+    as the pre-publish polish batch.
