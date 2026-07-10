@@ -1,8 +1,8 @@
 {
   "name": "claude-sessions-viewer",
   "displayName": "Claude Sessions Viewer",
-  "description": "Read Claude Code sessions like chat: locate current work, review history, export Markdown. Read-only, local, zero dependencies.",
-  "version": "1.15.2",
+  "description": "Read Claude Code sessions like chat: locate current work, filter and copy messages, and copy the source path. Read-only, local, zero dependencies.",
+  "version": "1.16.0",
   "publisher": "yurykoretskiy",
   "license": "MIT",
   "engines": {
@@ -67,20 +67,6 @@
         "icon": "$(empty-window)"
       },
       {
-        "command": "claudeSessions.toggleGrouping",
-        "title": "Claude Sessions: Switch to session timeline (now: folders A-Z)",
-        "icon": "$(list-tree)"
-      },
-      {
-        "command": "claudeSessions.toggleGroupingAlt",
-        "title": "Claude Sessions: Switch to folders A-Z (now: session timeline)",
-        "icon": "$(list-flat)"
-      },
-      {
-        "command": "claudeSessions.showInFolders",
-        "title": "Claude: Show in folder view"
-      },
-      {
         "command": "claudeSessions.resume",
         "title": "Claude: Resume session",
         "icon": "$(play)"
@@ -110,14 +96,6 @@
         "icon": "$(collapse-all)"
       },
       {
-        "command": "claudeSessions.openTranscript",
-        "title": "Claude: Open transcript (.jsonl)"
-      },
-      {
-        "command": "claudeSessions.copySessionId",
-        "title": "Claude: Copy session id"
-      },
-      {
         "command": "claudeSessions.openSettings",
         "title": "Claude Sessions: Open Settings",
         "icon": "$(gear)"
@@ -137,16 +115,6 @@
         }
       ],
       "view/title": [
-        {
-          "command": "claudeSessions.toggleGrouping",
-          "when": "view == claudeSessions.tree && claudeSessions.mode == 'folders' && claudeSessions.timelineEnabled",
-          "group": "navigation@0"
-        },
-        {
-          "command": "claudeSessions.toggleGroupingAlt",
-          "when": "view == claudeSessions.tree && claudeSessions.mode == 'chronological' && claudeSessions.timelineEnabled",
-          "group": "navigation@0"
-        },
         {
           "command": "claudeSessions.expandAll",
           "when": "view == claudeSessions.tree && !claudeSessions.expandedAll && claudeSessions.mode == 'folders'",
@@ -184,22 +152,9 @@
           "group": "inline@1"
         },
         {
-          "command": "claudeSessions.showInFolders",
-          "when": "view == claudeSessions.tree && viewItem == session && claudeSessions.mode == 'chronological'",
-          "group": "1_actions@1"
-        },
-        {
           "command": "claudeSessions.rename",
           "when": "view == claudeSessions.tree && viewItem == session",
           "group": "1_actions@2"
-        },
-        {
-          "command": "claudeSessions.openTranscript",
-          "when": "view == claudeSessions.tree && viewItem == session"
-        },
-        {
-          "command": "claudeSessions.copySessionId",
-          "when": "view == claudeSessions.tree && viewItem == session"
         }
       ],
       "editor/title": [
@@ -323,13 +278,6 @@
             "order": 2,
             "scope": "window",
             "markdownDescription": "Also show **automation sessions** — transcripts created by SDK runs such as `/security-review` and background agents, not conversations you had. Off by default: the tree then matches the sessions the official Claude Code panel shows."
-          },
-          "claudeSessionsViewer.timeline.enabled": {
-            "type": "boolean",
-            "default": false,
-            "order": 3,
-            "scope": "window",
-            "markdownDescription": "Show the experimental **Session Timeline** toggle. Off by default while the flat view is being redesigned for a clearer two-column layout."
           }
         }
       }

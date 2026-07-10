@@ -14,11 +14,6 @@ function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function shortHome(p) {
-  const home = os.homedir();
-  return p && p.startsWith(home) ? '~' + p.slice(home.length) : p || '?';
-}
-
 function fmt(ts) {
   if (!ts) return '?';
   const d = new Date(ts);
@@ -74,13 +69,7 @@ class ConversationViewer {
           if (refreshing) return;
           refreshing = true;
           try {
-            entry.convo = await extractConversation(session.file);
-            panel.webview.postMessage({
-              type: 'update',
-              messages: entry.convo.messages,
-              firstTs: entry.convo.firstTs,
-              lastTs: entry.convo.lastTs,
-            });
+            await this.refresh(entry, 'live');
           } catch {}
           refreshing = false;
         };
@@ -97,6 +86,17 @@ class ConversationViewer {
 
     this.opening.set(session.id, promise);
     return promise.finally(() => this.opening.delete(session.id));
+  }
+
+  async refresh(entry, status = 'refreshed') {
+    entry.convo = await extractConversation(entry.session.file);
+    await entry.panel.webview.postMessage({
+      type: 'update',
+      messages: entry.convo.messages,
+      firstTs: entry.convo.firstTs,
+      lastTs: entry.convo.lastTs,
+      status,
+    });
   }
 
   async onMessage(entry, msg) {
@@ -124,8 +124,12 @@ class ConversationViewer {
       }
       case 'copy': {
         await vscode.env.clipboard.writeText(conversationToText(convo, textOpts(msg)));
+        const count = convo.messages.filter((m) =>
+          m.role !== 'tool' && (msg.filter === 'user' || msg.filter === 'assistant' ? m.role === msg.filter : true)
+        ).length;
+        const scope = msg.filter === 'user' ? 'your messages' : msg.filter === 'assistant' ? `${cfg.agentLabel} messages` : 'visible conversation';
         vscode.window.showInformationMessage(
-          `Copied entire conversation (${convo.messages.filter((m) => m.role !== 'tool').length} messages)`
+          `Copied ${scope} (${count} messages${msg.names === false ? ', names hidden' : ''}).`
         );
         break;
       }
@@ -133,20 +137,8 @@ class ConversationViewer {
         await vscode.env.clipboard.writeText(session.file);
         vscode.window.showInformationMessage('Copied raw session JSONL path.');
         break;
-      case 'export': {
-        const uri = await vscode.window.showSaveDialog({
-          defaultUri: vscode.Uri.file(path.join(os.homedir(), `${title.replace(/[/\\:]/g, '-').slice(0, 60)}.md`)),
-          filters: { Markdown: ['md'] },
-        });
-        if (uri) {
-          const { writeFileSync } = require('fs');
-          writeFileSync(uri.fsPath, conversationToText(convo, textOpts(msg)));
-          vscode.window.showInformationMessage(`Exported to ${uri.fsPath}`);
-        }
-        break;
-      }
-      case 'reveal':
-        await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(session.file));
+      case 'refresh':
+        await this.refresh(entry);
         break;
       case 'openLink': {
         const href = String(msg.href || '').trim();
