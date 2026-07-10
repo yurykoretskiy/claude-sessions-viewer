@@ -15,13 +15,19 @@ let terminalsCreated = 0;
 let lastError = null;
 let lastOpenedExternal = null;
 let lastCommand = null;
+let postedMessages = [];
 
 const fakeVscode = {
   window: {
     createWebviewPanel() {
       panelsCreated++;
       return {
-        webview: { onDidReceiveMessage() {}, postMessage() {}, set html(v) {}, get html() { return ''; } },
+        webview: {
+          onDidReceiveMessage() {},
+          postMessage(msg) { postedMessages.push(msg); return true; },
+          set html(v) {},
+          get html() { return ''; },
+        },
         onDidDispose() {},
         reveal() {},
       };
@@ -60,6 +66,7 @@ fs.writeFileSync(
 
 test('concurrent open() calls create exactly one panel', async () => {
   panelsCreated = 0;
+  postedMessages = [];
   const viewer = new ConversationViewer({});
   const session = { id: 'race-test', file, size: 100 };
   const p1 = viewer.open(session, 'T', 'F');
@@ -69,6 +76,35 @@ test('concurrent open() calls create exactly one panel', async () => {
   assert.strictEqual(panelsCreated, 1, 'one panel for three concurrent opens');
   await viewer.open(session, 'T', 'F'); // post-completion: reuse, not create
   assert.strictEqual(panelsCreated, 1, 'existing panel reused');
+  assert.strictEqual(postedMessages.length, 0, 'plain reuse does not refresh implicitly');
+});
+
+test('existing panel can refresh and jump to newest message', async () => {
+  panelsCreated = 0;
+  postedMessages = [];
+  const liveFile = path.join(tmp, 'refresh-fixture.jsonl');
+  fs.writeFileSync(
+    liveFile,
+    JSON.stringify({ type: 'user', cwd: '/tmp/demo', timestamp: '2026-01-01T10:00:00Z', message: { content: 'first' } }) + '\n'
+  );
+
+  const viewer = new ConversationViewer({});
+  const session = { id: 'refresh-test', file: liveFile, size: 100 };
+  await viewer.open(session, 'T', 'F');
+  assert.strictEqual(panelsCreated, 1, 'initial panel created');
+
+  fs.appendFileSync(
+    liveFile,
+    JSON.stringify({ type: 'assistant', timestamp: '2026-01-01T10:00:05Z', message: { content: [{ type: 'text', text: 'second' }] } }) + '\n'
+  );
+  await viewer.open(session, 'T', 'F', { refresh: true, jumpToBottom: true });
+
+  assert.strictEqual(panelsCreated, 1, 'refresh reuses the existing panel');
+  assert.strictEqual(postedMessages.length, 1, 'one webview update posted');
+  assert.strictEqual(postedMessages[0].type, 'update');
+  assert.strictEqual(postedMessages[0].jumpToBottom, true);
+  assert.strictEqual(postedMessages[0].status, 'refreshed');
+  assert.deepStrictEqual(postedMessages[0].messages.map((m) => m.text), ['first', 'second']);
 });
 
 test('resume refuses a non-UUID session id (shell-injection guard)', async () => {

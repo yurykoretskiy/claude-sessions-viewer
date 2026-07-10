@@ -6,6 +6,13 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.15.3] — 2026-07-09
+
+### Changed
+- Pressing **Reveal current session** again now refreshes an already-open
+  conversation viewer for that session and jumps to the newest message, so
+  ongoing sessions can be reviewed without closing/reopening the panel.
+
 ## [1.15.2] — 2026-07-09
 
 ### Fixed

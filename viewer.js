@@ -50,6 +50,7 @@ class ConversationViewer {
     const existing = this.panels.get(session.id);
     if (existing) {
       existing.panel.reveal(opts.beside ? vscode.ViewColumn.Beside : undefined);
+      if (opts.refresh) return this.refresh(existing, { jumpToBottom: !!opts.jumpToBottom, status: 'refreshed' });
       return Promise.resolve();
     }
     const inFlight = this.opening.get(session.id);
@@ -74,13 +75,7 @@ class ConversationViewer {
           if (refreshing) return;
           refreshing = true;
           try {
-            entry.convo = await extractConversation(session.file);
-            panel.webview.postMessage({
-              type: 'update',
-              messages: entry.convo.messages,
-              firstTs: entry.convo.firstTs,
-              lastTs: entry.convo.lastTs,
-            });
+            await this.refresh(entry, { status: 'live' });
           } catch {}
           refreshing = false;
         };
@@ -97,6 +92,18 @@ class ConversationViewer {
 
     this.opening.set(session.id, promise);
     return promise.finally(() => this.opening.delete(session.id));
+  }
+
+  async refresh(entry, opts = {}) {
+    entry.convo = await extractConversation(entry.session.file);
+    await entry.panel.webview.postMessage({
+      type: 'update',
+      messages: entry.convo.messages,
+      firstTs: entry.convo.firstTs,
+      lastTs: entry.convo.lastTs,
+      jumpToBottom: !!opts.jumpToBottom,
+      status: opts.status || '',
+    });
   }
 
   async onMessage(entry, msg) {
@@ -816,9 +823,10 @@ window.addEventListener('message', e => {
   const m = e.data;
   if (m.type === 'update') {
     DATA.messages = m.messages;
+    const status = m.status ? ' · ' + m.status : '';
     $('meta').textContent = '${esc(folder)} · ' + DATA.messages.filter(x => x.role !== 'tool').length +
-      ' messages · ' + DATA.sessionId + ' · ' + fmtTs(m.firstTs) + ' → ' + fmtTs(m.lastTs) + ' · live';
-    render(true);
+      ' messages · ' + DATA.sessionId + ' · ' + fmtTs(m.firstTs) + ' → ' + fmtTs(m.lastTs) + status;
+    render(!m.jumpToBottom);
   }
 });
 

@@ -672,6 +672,8 @@ function activate(context) {
       if (provider.config.revealOpenConversation) {
         await viewer.open(node.session, provider.displayTitle(node.session), node.group.label, {
           beside: true,
+          refresh: true,
+          jumpToBottom: true,
         });
       }
     }),
