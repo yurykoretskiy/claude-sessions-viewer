@@ -403,8 +403,8 @@ class ConversationViewer {
   <div class="controls">
     <div class="segmented" id="filterSeg">
       <button class="seg on" data-f="all">All</button>
-      <button class="seg" data-f="user" id="chipUser">Me</button>
       <button class="seg" data-f="assistant" id="chipAgent">${esc(cfg.agentLabel)}</button>
+      <button class="seg" data-f="user" id="chipUser">${esc(cfg.userLabel)}</button>
     </div>
     <div class="segmented" id="densitySeg">
       <button class="seg${cfg.viewerDensity === 'full' ? '' : ' on'}" data-d="short">Short</button>
@@ -473,8 +473,8 @@ document.querySelectorAll('[data-th]').forEach(b => {
 
 function labels() {
   return {
-    user: ($('userLabel').value || 'USER').toUpperCase(),
-    agent: ($('agentLabel').value || 'CLAUDE').toUpperCase()
+    user: $('userLabel').value.trim() || 'USER',
+    agent: $('agentLabel').value.trim() || 'CLAUDE'
   };
 }
 
@@ -685,8 +685,8 @@ function render(keepScroll) {
   const wasAtBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 60;
   const prevScroll = chat.scrollTop;
   const l = labels();
-  $('chipUser').textContent = l.user === 'USER' ? 'Me' : l.user;
   $('chipAgent').textContent = l.agent;
+  $('chipUser').textContent = l.user;
   matches = collectMatches();
   currentMatch = Math.min(currentMatch, Math.max(0, matches.length - 1));
   chat.innerHTML = '';
@@ -707,7 +707,7 @@ function render(keepScroll) {
   // One bubble per turn: consecutive assistant messages (tool records between
   // them don't break the turn) merge into a single bubble; a user message
   // always starts a new bubble. Turn boundaries come from the ORIGINAL
-  // sequence, so the Me/CLAUDE filter never changes how turns are grouped.
+  // sequence, so the speaker filter never changes how turns are grouped.
   const groups = [];
   const groupOf = {};
   for (let i = start; i < msgs.length; i++) {

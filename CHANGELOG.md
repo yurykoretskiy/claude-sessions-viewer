@@ -6,6 +6,16 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.16.1] — 2026-07-10
+
+### Changed
+- Viewer filter buttons now follow `All | Agent | You` order and use the same
+  configurable labels as message headers, copies, exports, and the settings
+  menu.
+- Custom labels keep the user's typed casing instead of being forced to
+  uppercase, and the default user filter no longer special-cases `USER` as
+  `Me`.
+
 ## [1.16.0] — 2026-07-10
 
 ### Changed

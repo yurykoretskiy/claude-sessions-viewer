@@ -199,6 +199,44 @@ test('generated HTML uses the approved speaker palettes and keeps orange as the 
   assert.match(html, /\.msg\.user code\.inline \{ color:var\(--user-strong\); \}/);
 });
 
+test('filter chips use the configured names in All, Agent, User order without forcing Me or uppercase', () => {
+  const origGetConfiguration = fakeVscode.workspace.getConfiguration;
+  fakeVscode.workspace.getConfiguration = () => ({
+    get: (key, fallback) => ({
+      userLabel: 'Yury',
+      agentLabel: 'Clone',
+      showNames: true,
+      theme: 'system',
+      viewerDensity: 'short',
+    }[key] ?? fallback),
+  });
+  try {
+    const viewer = new ConversationViewer({});
+    const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };
+    const html = viewer.html({
+      session,
+      convo: {
+        firstTs: '2026-01-01T10:00:00Z',
+        lastTs: '2026-01-01T10:00:05Z',
+        messages: [
+          { role: 'user', text: 'hello', ts: '2026-01-01T10:00:00Z' },
+          { role: 'assistant', text: 'hi', ts: '2026-01-01T10:00:05Z' },
+        ],
+      },
+      title: 'T',
+      folder: 'F',
+    });
+    const filterMarkup = html.match(/<div class="segmented" id="filterSeg">([\s\S]*?)<\/div>/)[1];
+    const labelsFn = html.match(/function labels\(\) \{([\s\S]*?)\n\}/)[1];
+    assert.match(filterMarkup, /data-f="all">All<\/button>\s*<button class="seg" data-f="assistant" id="chipAgent">Clone<\/button>\s*<button class="seg" data-f="user" id="chipUser">Yury<\/button>/);
+    assert.doesNotMatch(filterMarkup, />Me<\/button>/);
+    assert.match(labelsFn, /user: \$\('userLabel'\)\.value\.trim\(\) \|\| 'USER'/);
+    assert.doesNotMatch(labelsFn, /\.toUpperCase\(\)/);
+  } finally {
+    fakeVscode.workspace.getConfiguration = origGetConfiguration;
+  }
+});
+
 test('escaping-trap regression: no degraded /s+/ regex survives the template literal', () => {
   // v1.12.0 wrote replace(/\s+/g, ' ') inside the embedded webview template
   // literal without doubling the backslash. Template literals silently turn
