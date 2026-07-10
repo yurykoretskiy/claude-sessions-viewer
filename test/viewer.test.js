@@ -173,6 +173,32 @@ test('generated HTML contains the Short/Full toggle and line-clamp CSS, no scan-
   assert.doesNotMatch(html, /\.row-time/);
 });
 
+test('generated HTML uses the approved speaker palettes and keeps orange as the Claude identity accent', () => {
+  const viewer = new ConversationViewer({});
+  const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };
+  const html = viewer.html({
+    session,
+    convo: {
+      firstTs: '2026-01-01T10:00:00Z',
+      lastTs: '2026-01-01T10:00:05Z',
+      messages: [
+        { role: 'user', text: 'inspect `source_path`', ts: '2026-01-01T10:00:00Z' },
+        { role: 'assistant', text: 'working', ts: '2026-01-01T10:00:05Z' },
+      ],
+    },
+    title: 'T',
+    folder: 'F',
+  });
+
+  assert.match(html, /--user-bub:#e8f0f5; --user-edge:#5b7c8f; --user-strong:#456579/);
+  assert.match(html, /--agent-bub:#ececf7; --agent-edge:#6865a5; --agent-strong:#55518f/);
+  assert.match(html, /--claude-spark:#d97757/);
+  assert.match(html, /\.msg\.assistant \{[^}]*border-left:3px solid var\(--agent-edge\)/);
+  assert.match(html, /\.msg\.user \{[^}]*border-right:3px solid var\(--user-edge\)/);
+  assert.match(html, /\.msg\.assistant \.role-icon \{ color:var\(--claude-spark\); \}/);
+  assert.match(html, /\.msg\.user code\.inline \{ color:var\(--user-strong\); \}/);
+});
+
 test('escaping-trap regression: no degraded /s+/ regex survives the template literal', () => {
   // v1.12.0 wrote replace(/\s+/g, ' ') inside the embedded webview template
   // literal without doubling the backslash. Template literals silently turn

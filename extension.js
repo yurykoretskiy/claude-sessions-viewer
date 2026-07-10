@@ -6,6 +6,11 @@ const { indexAll, isAutomationSession } = require('./indexer');
 const { ConversationViewer } = require('./viewer');
 
 const TIMELINE_TITLE_MAX = 48;
+const LIVE_WINDOW_MS = 5 * 60 * 1000;
+
+function isLiveSession(session, now = Date.now()) {
+  return !!(session && session.mtimeMs && now - session.mtimeMs < LIVE_WINDOW_MS);
+}
 
 function relativeAge(iso) {
   if (!iso) return '';
@@ -396,6 +401,7 @@ class SessionTreeProvider {
     }
     if (element.kind === 'folder') {
       const g = element.group;
+      const hasLiveSession = g.sessions.some((session) => isLiveSession(session));
       const keepRevealedOpen = this.groupContainsSelectedSession(g);
       const isExpanded = this.expandedAll || keepRevealedOpen;
       const item = new vscode.TreeItem(
@@ -419,10 +425,14 @@ class SessionTreeProvider {
       const countPart = `(${g.sessions.length})`;
       const statusPart = exists ? '' : 'gone';
       item.description = [parentHint, countPart, statusPart].filter(Boolean).join(' · ');
-      item.iconPath = vscode.Uri.joinPath(this.context.extensionUri, 'assets', 'folder-spark.svg');
+      item.iconPath = vscode.Uri.joinPath(
+        this.context.extensionUri,
+        'assets',
+        hasLiveSession ? 'folder-active.svg' : 'folder-spark.svg'
+      );
       item.contextValue = 'folder';
       item.tooltip = exists
-        ? g.folderPath
+        ? `${g.folderPath}${hasLiveSession ? '\n\nClaude is active in this folder.' : ''}`
         : `${g.folderPath}\n\nThis folder no longer exists on disk — the sessions recorded here are kept as history.`;
       return item;
     }
@@ -442,11 +452,11 @@ class SessionTreeProvider {
     // Single em-space padding: VS Code has no per-item indent API, and
     // sessions at the default tree indent read as siblings of the folders.
     const ageTs = s.effTs || s.lastTs;
-    // Live ● sits in the left padding slot (the right column is the first
-    // thing a narrow sidebar clips); em-space keeps titles aligned otherwise.
-    const live = s.mtimeMs && Date.now() - s.mtimeMs < 5 * 60 * 1000;
+    // A live session gets the compact Claude spark icon. Inactive rows retain
+    // the em-space padding: VS Code does not expose per-item indent controls.
+    const live = isLiveSession(s);
     const visibleTitle = this.treeMode === 'chronological' ? truncateTitle(title) : title;
-    const label = `${live ? '●' : ' '} ${ageTs ? `[${relativeAge(ageTs)}] ` : ''}${visibleTitle}`;
+    const label = `${live ? '' : '  '}${ageTs ? `[${relativeAge(ageTs)}] ` : ''}${visibleTitle}`;
     const item = new vscode.TreeItem(
       label,
       this.config.promptChildren && s.prompts && s.prompts.length
@@ -455,7 +465,7 @@ class SessionTreeProvider {
     );
     item.id = 's:' + s.id;
     item.description = this.treeMode === 'chronological' && element.group ? element.group.label : '';
-    // No icon on session rows — the space goes to the session title instead.
+    if (live) item.iconPath = vscode.Uri.joinPath(this.context.extensionUri, 'assets', 'session-active.svg');
     item.contextValue = 'session';
     item.tooltip = new vscode.MarkdownString(
       [
@@ -640,7 +650,7 @@ function activate(context) {
       const titleMatch = provider.findByActiveTabTitle(all, activeTabTitle);
       const now = Date.now();
       const recent = all
-        .filter((n) => n.session.mtimeMs && now - n.session.mtimeMs < 5 * 60 * 1000)
+        .filter((n) => isLiveSession(n.session, now))
         .sort((a, b) => b.session.mtimeMs - a.session.mtimeMs);
       let node;
       if (titleMatch) {

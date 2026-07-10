@@ -227,25 +227,31 @@ class ConversationViewer {
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <style>
   html { height:100%; overflow:hidden; }
-  body { --agent-strong:#d97757; --user-strong:#4f9f62; margin:0;
+  body { --claude-spark:#d97757; margin:0;
     font-family: var(--vscode-font-family), -apple-system, 'SF Pro Text', 'Segoe UI', sans-serif;
     font-size: var(--vscode-font-size, 14px); line-height:1.48; }
   body.sys { --bg:var(--vscode-editor-background); --panel:var(--vscode-editor-background);
     --line:var(--vscode-panel-border,#3c3c3c); --fg:var(--vscode-foreground);
     --mut:var(--vscode-descriptionForeground,#8a8a8a); --chip:var(--vscode-badge-background,#333);
     --btn2:var(--vscode-button-secondaryBackground,#3a3d41); --sep:#5a5a5a;
-    --user-bub:color-mix(in srgb, #dff3d7 72%, var(--vscode-editor-background));
-    --agent-bub:color-mix(in srgb, #f3d6cc 72%, var(--vscode-editor-background));
+    --user-bub:color-mix(in srgb, #e8f0f5 72%, var(--vscode-editor-background));
+    --user-edge:#5b7c8f; --user-strong:#456579;
+    --agent-bub:color-mix(in srgb, #ececf7 72%, var(--vscode-editor-background));
+    --agent-edge:#6865a5; --agent-strong:#55518f;
     --rail-track:rgba(130,126,145,.18); --rail-fill:#8c849d; --rail-thumb:#8c849d;
     --code-bg:#282828; --code-fg:#eee; --mark:#ffe98f; }
   body.dark { --bg:#1e1e1e; --panel:#252526; --line:#3c3c3c; --fg:#ccc; --mut:#8a8a8a;
-    --user-bub:#233427; --agent-bub:#3a2620; --chip:#333; --btn2:#3a3d41; --sep:#5a5a5a;
+    --user-bub:#24343d; --user-edge:#7099ad; --user-strong:#93b5c6;
+    --agent-bub:#29283a; --agent-edge:#8d88c5; --agent-strong:#aaa6dc;
+    --chip:#333; --btn2:#3a3d41; --sep:#5a5a5a;
     --rail-track:rgba(142,134,162,.20); --rail-fill:#8f86a6; --rail-thumb:#8f86a6;
     --code-bg:#161616; --code-fg:#eee; --mark:#6f5a18; }
   body.light { --bg:#fff; --panel:#f7f7f7; --line:#dedede; --fg:#333; --mut:#767676;
-    --user-bub:#dff3d7; --agent-bub:#f3d6cc; --chip:#f1f1f1; --btn2:#e9e9e9; --sep:#bbb;
+    --user-bub:#e8f0f5; --user-edge:#5b7c8f; --user-strong:#456579;
+    --agent-bub:#ececf7; --agent-edge:#6865a5; --agent-strong:#55518f;
+    --chip:#f1f1f1; --btn2:#e9e9e9; --sep:#bbb;
     --rail-track:rgba(115,108,138,.16); --rail-fill:#8c849d; --rail-thumb:#8c849d;
-    --agent-strong:#c15f3c; --user-strong:#4f9f62; --code-bg:#282828; --code-fg:#eee; --mark:#ffe98f; }
+    --code-bg:#282828; --code-fg:#eee; --mark:#ffe98f; }
   body { background:var(--bg); color:var(--fg); display:flex; justify-content:center; height:100%; overflow:hidden; }
   .viewer { width:min(820px,100vw); height:100%; max-height:100%; overflow:hidden; background:var(--panel); border-left:1px solid var(--line); border-right:1px solid var(--line); display:flex; flex-direction:column; position:relative; }
   .vhead { padding:10px 16px 8px; border-bottom:1px solid var(--line); background:color-mix(in srgb, var(--panel) 97%, transparent); flex-shrink:0; position:relative; z-index:8; }
@@ -316,12 +322,12 @@ class ConversationViewer {
   .fold-ind { position:absolute; top:5px; right:7px; width:16px; height:16px; line-height:15px; text-align:center;
     color:var(--mut); opacity:.55; cursor:pointer; font-size:11px; border-radius:5px; user-select:none; }
   .fold-ind:hover { opacity:1; background:var(--btn2); color:var(--fg); }
-  .msg.user { margin-left:auto; background:var(--user-bub); border-right:3px solid var(--user-strong); border-bottom-right-radius:4px; }
-  .msg.assistant { margin-right:auto; background:var(--agent-bub); border-left:3px solid var(--agent-strong); border-bottom-left-radius:4px; }
+  .msg.user { margin-left:auto; background:var(--user-bub); border-right:3px solid var(--user-edge); border-bottom-right-radius:4px; }
+  .msg.assistant { margin-right:auto; background:var(--agent-bub); border-left:3px solid var(--agent-edge); border-bottom-left-radius:4px; }
   .who { font-size:11px; color:var(--mut); margin-bottom:3px; letter-spacing:.02em; font-weight:700; text-transform:uppercase; }
   .role-icon { display:inline-block; margin-right:4px; font-size:12px; line-height:1; vertical-align:-1px; }
-  .msg.assistant .role-icon { color:var(--agent-strong); }
-  .msg.user .role-icon { color:var(--user-strong); }
+  .msg.assistant .role-icon { color:var(--claude-spark); }
+  .msg.user .role-icon { color:var(--user-edge); }
   body[data-names="off"] .who { display:none; }
   .body p { margin:0 0 7px; white-space:pre-wrap; }
   .body p:last-child { margin-bottom:0; }
@@ -330,14 +336,17 @@ class ConversationViewer {
   .body h3 { margin:4px 0 6px; font-size:1.1em; line-height:1.25; }
   .body ul, .body ol { margin:6px 0 6px 19px; padding:0; }
   code.inline { background:color-mix(in srgb, var(--fg) 13%, transparent); border-radius:4px; padding:1px 4px;
-    color:var(--agent-strong); font-family:var(--vscode-editor-font-family, ui-monospace, Menlo, monospace);
+    font-family:var(--vscode-editor-font-family, ui-monospace, Menlo, monospace);
     font-size:calc(var(--vscode-editor-font-size, 12px) * 0.95); }
-  .quote { border-left:3px solid var(--agent-strong); background:color-mix(in srgb, var(--fg) 8%, transparent); padding:6px 8px;
+  .msg.assistant code.inline { color:var(--agent-strong); }
+  .msg.user code.inline { color:var(--user-strong); }
+  .quote { border-left:3px solid var(--agent-edge); background:color-mix(in srgb, var(--fg) 8%, transparent); padding:6px 8px;
     border-radius:6px; margin:7px 0; color:var(--fg); }
+  .msg.user .quote { border-left-color:var(--user-edge); }
   .attachments { display:flex; flex-wrap:wrap; gap:5px; margin:0 0 6px; }
   .attach { border:1px solid var(--line); color:var(--mut); background:color-mix(in srgb, var(--fg) 9%, transparent);
     border-radius:999px; padding:2px 8px; font:inherit; font-size:11.5px; cursor:pointer; }
-  .attach:hover { color:var(--fg); border-color:var(--agent-strong); }
+  .attach:hover { color:var(--fg); border-color:var(--agent-edge); }
   pre { margin:8px 0; padding:9px 10px; border-radius:8px; background:var(--code-bg); color:var(--code-fg);
     overflow-x:auto; font-family:var(--vscode-editor-font-family, ui-monospace, Menlo, monospace);
     font-size:calc(var(--vscode-editor-font-size, 12px) * 0.95); line-height:1.45; }
@@ -348,6 +357,8 @@ class ConversationViewer {
   table { border-collapse:collapse; min-width:470px; width:100%; font-size:0.86em; }
   th, td { border-bottom:1px solid var(--line); padding:5px 7px; text-align:left; vertical-align:top; }
   th { background:rgba(0,0,0,.05); font-weight:700; }
+  .msg.assistant th { background:color-mix(in srgb, var(--agent-edge) 12%, transparent); }
+  .msg.user th { background:color-mix(in srgb, var(--user-edge) 12%, transparent); }
   mark { background:var(--mark); color:inherit; border-radius:3px; padding:0 1px; }
   mark.current { background:#ffc85a; box-shadow:0 0 0 2px rgba(217,119,87,.45); }
   .more { color:var(--agent-strong); font-size:12px; cursor:pointer; margin-top:6px; display:block; }
@@ -681,7 +692,7 @@ function render(keepScroll) {
   chat.innerHTML = '';
   const msgs = DATA.messages;
   if (!msgs.some(m => m.role !== 'tool')) {
-    chat.innerHTML = '<div class="empty"><div style="font-size:26px;color:var(--agent-strong);opacity:.6">✳</div>' +
+    chat.innerHTML = '<div class="empty"><div style="font-size:26px;color:var(--claude-spark);opacity:.7">✳</div>' +
       '<div>No readable conversation in this transcript</div>' +
       '<div style="font-size:11.5px">Open raw JSON for transcript internals.</div></div>';
     return;

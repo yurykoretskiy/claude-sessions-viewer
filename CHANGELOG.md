@@ -6,6 +6,18 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.16.0] — 2026-07-10
+
+### Changed
+- Claude messages now use the approved **Code Indigo** surface, while the
+  orange Claude spark remains as a small identity accent instead of tinting
+  the whole message like a warning.
+- User messages now use **Notebook Blue**, avoiding the success/completed
+  meaning of the previous green while keeping the two speakers distinct.
+- Inactive folder icons are neutral. A folder containing a live session gets
+  an indigo outline with the Claude spark, and the live session row gets its
+  own compact Claude presence icon instead of a generic gray dot.
+
 ## [1.15.2] — 2026-07-09
 
 ### Fixed

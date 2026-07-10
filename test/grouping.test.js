@@ -26,7 +26,7 @@ const fakeVscode = {
   TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
   ThemeIcon: class {},
   MarkdownString: class { constructor(s) { this.value = s; } },
-  Uri: { joinPath() { return {}; }, file() { return {}; } },
+  Uri: { joinPath(...parts) { return { parts }; }, file() { return {}; } },
   StatusBarAlignment: { Right: 2 },
   ViewColumn: { One: 1, Beside: -2 },
 };
@@ -41,6 +41,7 @@ const { SessionTreeProvider } = require('../extension');
 const fakeContext = (state = {}) => ({
   globalState: { get: (k, d) => (k in state ? state[k] : d), update() {} },
   globalStorageUri: { fsPath: '/tmp/x' },
+  extensionUri: 'extension-root',
 });
 
 const S = (id, folder, effTs) => ({
@@ -176,4 +177,30 @@ test('collapse-all keeps the folder containing the revealed session expanded', (
     fakeVscode.TreeItemCollapsibleState.Collapsed,
     'unrelated folders stay collapsed'
   );
+});
+
+test('live sessions use the Claude presence icon and highlight their containing folder', () => {
+  const live = {
+    ...S('live-now', 'active-project', new Date().toISOString()),
+    mtimeMs: Date.now(),
+  };
+  const inactive = {
+    ...S('old-session', 'quiet-project', '2026-01-01T00:00:00.000Z'),
+    mtimeMs: Date.parse('2026-01-01T00:00:00.000Z'),
+  };
+  const p = new SessionTreeProvider(fakeContext());
+  const groups = p.buildFolderGroups([live, inactive], null);
+  const activeGroup = groups.find((g) => g.label === 'active-project');
+  const quietGroup = groups.find((g) => g.label === 'quiet-project');
+
+  const activeFolderItem = p.getTreeItem({ kind: 'folder', group: activeGroup });
+  const quietFolderItem = p.getTreeItem({ kind: 'folder', group: quietGroup });
+  assert.strictEqual(activeFolderItem.iconPath.parts.at(-1), 'folder-active.svg');
+  assert.strictEqual(quietFolderItem.iconPath.parts.at(-1), 'folder-spark.svg');
+
+  const liveSessionItem = p.getTreeItem({ kind: 'session', session: live, group: activeGroup });
+  const inactiveSessionItem = p.getTreeItem({ kind: 'session', session: inactive, group: quietGroup });
+  assert.strictEqual(liveSessionItem.iconPath.parts.at(-1), 'session-active.svg');
+  assert.strictEqual(inactiveSessionItem.iconPath, undefined);
+  assert.doesNotMatch(liveSessionItem.label, /●/, 'the Claude icon replaces the generic live dot');
 });

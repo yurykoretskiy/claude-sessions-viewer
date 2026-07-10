@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" role="img" aria-label="Active Claude session">
+  <circle cx="8" cy="8" r="7" fill="#ececf7"/>
+  <g stroke="#d97757" stroke-width="1.35" stroke-linecap="round">
+    <path d="M8 3.1v2.8M8 10.1v2.8M3.1 8h2.8M10.1 8h2.8"/>
+    <path d="M4.55 4.55l1.98 1.98M9.47 9.47l1.98 1.98M11.45 4.55L9.47 6.53M6.53 9.47l-1.98 1.98"/>
+  </g>
+  <circle cx="8" cy="8" r=".9" fill="#d97757"/>
+</svg>
