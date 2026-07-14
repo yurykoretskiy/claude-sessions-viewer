@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>POC — Global search over sessions</title>
+<style>
+  :root {
+    --bg: #1e1e1e; --sidebar: #252526; --hover: #2a2d2e; --sel: #094771;
+    --fg: #cccccc; --dim: #8a8a8a; --accent: #e8a33d; --blue: #4fc1ff;
+    --border: #3c3c3c; --badge: #4d4d4d; --hit: #613214; --hitfg: #ffd9a0;
+    --user: #6fc3ff; --cc: #c78aff; --tool: #7a7a7a; --flash: #2b3d54;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 13px/1.5 -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
+         display: flex; gap: 24px; padding: 24px; flex-wrap: wrap; }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  .explain { max-width: 340px; }
+  .explain p { color: var(--dim); }
+  .explain b { color: var(--fg); }
+  kbd { background: var(--badge); border-radius: 3px; padding: 0 5px; font-size: 11px; }
+
+  /* ---- sidebar (search panel) ---- */
+  .sidebar { width: 360px; background: var(--sidebar); border: 1px solid var(--border);
+             border-radius: 6px; overflow: hidden; flex-shrink: 0; align-self: flex-start; }
+  .titlebar { padding: 6px 10px; border-bottom: 1px solid var(--border);
+              font-size: 11px; letter-spacing: .08em; color: var(--dim); }
+  .searchbox { padding: 8px 10px 4px; }
+  .searchbox input[type=text] {
+    width: 100%; background: #3c3c3c; border: 1px solid var(--border); border-radius: 3px;
+    color: var(--fg); padding: 4px 8px; font: inherit; outline: none; }
+  .searchbox input[type=text]:focus { border-color: #007fd4; }
+  .opts { display: flex; gap: 14px; padding: 4px 10px 8px; font-size: 11.5px; color: var(--dim);
+          border-bottom: 1px solid var(--border); }
+  .opts label { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 4px; }
+  .opts input { accent-color: #007fd4; margin: 0; }
+  .summary { padding: 6px 10px; font-size: 11.5px; color: var(--dim);
+             border-bottom: 1px solid var(--border); }
+  .summary b { color: var(--fg); }
+
+  .results { max-height: 520px; overflow-y: auto; }
+  .sess-head { display: flex; align-items: center; gap: 6px; padding: 4px 10px;
+               cursor: pointer; white-space: nowrap; overflow: hidden; }
+  .sess-head:hover { background: var(--hover); }
+  .sess-head .chev { width: 12px; color: var(--dim); font-size: 10px; flex-shrink: 0; }
+  .sess-head .proj { color: var(--fg); font-weight: 600; }
+  .sess-head .sid { color: var(--dim); font-size: 11px; }
+  .sess-head .date { color: var(--dim); font-size: 11px; }
+  .sess-head .count { margin-left: auto; background: var(--badge); border-radius: 8px;
+                      font-size: 10px; padding: 0 7px; }
+  .snips.hidden { display: none; }
+  .snip { display: flex; gap: 7px; padding: 3px 10px 3px 26px; cursor: pointer;
+          font-size: 12px; line-height: 1.45; }
+  .snip:hover { background: var(--hover); }
+  .snip.active { background: var(--sel); }
+  .snip .who { flex-shrink: 0; width: 30px; font-weight: 700; font-size: 10.5px; padding-top: 2px; }
+  .snip .who.user { color: var(--user); } .snip .who.cc { color: var(--cc); }
+  .snip .who.tool { color: var(--tool); }
+  .snip .time { flex-shrink: 0; color: var(--dim); font-size: 10.5px; padding-top: 2px; }
+  .snip .text { color: #b8b8b8; overflow: hidden; }
+  .snip mark, .msg mark { background: var(--hit); color: var(--hitfg); border-radius: 2px; padding: 0 1px; }
+  .empty { padding: 18px 12px; color: var(--dim); font-size: 12px; text-align: center; }
+  .aihint { padding: 8px 10px; border-top: 1px solid var(--border); }
+  .aihint button { width: 100%; background: #2d2d30; color: var(--dim); border: 1px dashed var(--border);
+                   border-radius: 4px; padding: 5px; font: inherit; font-size: 11.5px; cursor: not-allowed; }
+
+  /* ---- viewer (right pane) ---- */
+  .viewer { flex: 1; min-width: 420px; max-width: 640px; background: var(--sidebar);
+            border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+            display: flex; flex-direction: column; height: 640px; }
+  .viewer .titlebar { display: flex; gap: 8px; align-items: center; }
+  .viewer .titlebar .crumb { letter-spacing: 0; text-transform: none; color: var(--fg); }
+  .msgs { flex: 1; overflow-y: auto; padding: 10px 14px; }
+  .msg { margin: 0 0 10px; padding: 7px 10px; border-radius: 6px; max-width: 88%; font-size: 12.5px; }
+  .msg .meta { font-size: 10.5px; color: var(--dim); margin-bottom: 2px; }
+  .msg.user { background: #123047; margin-left: auto; }
+  .msg.user .meta b { color: var(--user); }
+  .msg.cc { background: #2d2438; }
+  .msg.cc .meta b { color: var(--cc); }
+  .msg.tool { background: #262626; border: 1px dashed var(--border); color: var(--dim);
+              font-family: ui-monospace, Menlo, monospace; font-size: 11px; }
+  .msg.flash { animation: flash 1.6s ease-out; }
+  @keyframes flash { 0%, 40% { box-shadow: 0 0 0 2px var(--accent); } 100% { box-shadow: none; } }
+  .viewer .placeholder { flex: 1; display: flex; align-items: center; justify-content: center;
+                         color: var(--dim); font-size: 12.5px; text-align: center; padding: 30px; }
+</style>
+</head>
+<body>
+
+<div class="explain">
+  <h1>POC — global search over sessions</h1>
+  <p>Left panel mocks the <b>Search view</b> that would sit above the sessions
+     tree in the Claude Sessions sidebar. Right pane mocks the existing
+     <b>conversation viewer</b>.</p>
+  <p><b>Try it:</b> type <kbd>hermes board</kbd>, <kbd>docker</kbd> or
+     <kbd>telegram</kbd>. Exact-phrase match, live while typing.</p>
+  <p>Results are <b>grouped by session</b>, newest session first, most recent
+     session pre-expanded. Each snippet = who said it, when, and ~100 chars of
+     context around the hit.</p>
+  <p><b>Click a snippet</b> — the viewer opens that session, scrolls to the
+     exact message and flashes it. That's the handoff to your normal
+     "glide over the session" reading.</p>
+  <p>Toggle <b>tool output</b> to see how much noise tool results add —
+     that's why they're excluded by default.</p>
+  <p style="color:var(--dim); font-size:11px">Data is a hand-made subset
+     modelled on the real Hermes sessions, 14 Jul 2026.</p>
+</div>
+
+<div class="sidebar">
+  <div class="titlebar">SEARCH — ALL SESSIONS</div>
+  <div class="searchbox">
+    <input type="text" id="q" placeholder="Search all sessions (exact phrase)…" autofocus>
+  </div>
+  <div class="opts">
+    <label><input type="checkbox" id="matchcase"> match case</label>
+    <label><input type="checkbox" id="tools"> include tool output</label>
+  </div>
+  <div class="summary" id="summary">Type at least 2 characters to search.</div>
+  <div class="results" id="results"></div>
+  <div class="aihint">
+    <button title="Phase 2 — headless Haiku run over the matched sessions">
+      ✦ Ask AI about these results&nbsp;&nbsp;(phase 2 — disabled in POC)
+    </button>
+  </div>
+</div>
+
+<div class="viewer">
+  <div class="titlebar"><span class="crumb" id="crumb">CONVERSATION VIEWER</span></div>
+  <div class="placeholder" id="placeholder">Search on the left,<br>then click a snippet to open the session here.</div>
+  <div class="msgs hidden" id="msgs"></div>
+</div>
+
+<script>
+// ---- fake dataset: sessions modelled on the real Hermes work ----
+const SESSIONS = [
+  {
+    id: '0a59bb06', project: 'hermes', date: '12 Jul', ts: 5,
+    msgs: [
+      { role: 'user', time: '09:17', text: "I want to test Codex's Hermes Local Chrome side-panel extension today. First check what is in local-agent/ and whether anything is committed." },
+      { role: 'cc',   time: '09:19', text: "Verified the live environment. The local-agent/ folder is untracked, nothing committed yet. The extension expects the Hermes Docker container to be reachable on localhost before the Start button does anything." },
+      { role: 'tool', time: '09:19', text: "$ git status --short\n?? local-agent/\n$ docker ps -a | grep hermes\nhermes-agent  nousresearch/hermes:latest  Exited (0) 2 days ago" },
+      { role: 'user', time: '10:00', text: "Ok start it. I want the full cycle: click Start in the side panel, container boots, and the panel goes green when Hermes answers." },
+      { role: 'cc',   time: '10:02', text: "Docker engine is up, container starting. Polling the health endpoint until Hermes answers — the side panel shows the startup progress in real time." },
+      { role: 'tool', time: '10:02', text: "$ docker start hermes-agent\nhermes-agent\n$ curl -s localhost:8080/health\n{\"status\":\"starting\"}\n$ curl -s localhost:8080/health\n{\"status\":\"ready\",\"model\":\"qwen-3b\"}" },
+      { role: 'cc',   time: '10:15', text: "Full cycle verified — the Start click took it through startup to ready, all indicators green, real data flowing. Hermes is left running for you." },
+      { role: 'user', time: '14:22', text: "One more thing: before the hermes container starts, the extension should check that Docker itself is running and offer to launch it. Add that to the backlog." }
+    ]
+  },
+  {
+    id: '1cc63a9d', project: 'hermes', date: '30 Jun', ts: 3,
+    msgs: [
+      { role: 'user', time: '11:40', text: "The goal is to feed the hermes board with tools that run without my local machine. Deploy mistral-ocr on the VPS as the first server-side tool." },
+      { role: 'cc',   time: '11:42', text: "Understood — the chain is Telegram user → hermes board → Hermes agent → VPS tool. I'll set up mistral-ocr/ on 76.13.187.243 so the agent can call it with the Mac switched off." },
+      { role: 'tool', time: '11:43', text: "$ ssh vps 'python3 --version && ls /root/.hermes'\nPython 3.12.3\nconfig.yaml  skills/  tools/" },
+      { role: 'user', time: '12:05', text: "Test it with tesseract first, the Mistral API key is still pending. And remember: everything for the board must survive a VPS reboot." },
+      { role: 'cc',   time: '12:30', text: "Tesseract path works end to end on the VPS. Documented the pending Mistral key as a blocker and wired the tool into the Hermes skills folder so the board picks it up after reboot." }
+    ]
+  },
+  {
+    id: '00dbce93', project: 'hermes', date: '30 Jun', ts: 2,
+    msgs: [
+      { role: 'user', time: '08:10', text: "Set up the Telegram gateway for Hermes on the VPS. The bot is @YuryHermesBot, credentials are in the master .env." },
+      { role: 'cc',   time: '08:14', text: "Telegram gateway configured in /root/.hermes/config.yaml with TELEGRAM_BOT_TOKEN_VPS and the allowed user id restricted to you. The agent now answers in the chat." },
+      { role: 'tool', time: '08:14', text: "$ grep -c telegram /root/.hermes/config.yaml\n6\n$ systemctl status hermes\nactive (running) since Mon 2026-06-30 08:13:02 UTC" },
+      { role: 'user', time: '09:30', text: "It can't run my skills. Why does the hermes sandbox refuse to invoke them directly?" },
+      { role: 'cc',   time: '09:33', text: "Root cause found: the Hermes sandbox can't invoke bare skills — everything must be exposed through an MCP server or plugin. That's the blocker to solve before more board tools are added." }
+    ]
+  },
+  {
+    id: 'efe433bc', project: 'hermes', date: '29 Jun', ts: 1,
+    msgs: [
+      { role: 'user', time: '05:27', text: "Go over these videos about Hermes and store the key capabilities on the go." },
+      { role: 'cc',   time: '05:40', text: "Rich content — Hermes is a Nous Research AI agent with self-healing, skills, plugins, scheduled tasks, memory/soul docs and gateways like Telegram. Persisting the capability directions as findings now." },
+      { role: 'user', time: '06:02', text: "How should sessions map to models? I want one continuous session per Telegram chat and a /model command to swap the brain." },
+      { role: 'cc',   time: '06:05', text: "Design stored: one session per Telegram chat keyed by chat_id, memory persists across model swaps. Default model Qwen 3B on local Ollama, escalation to Gemini on demand." }
+    ]
+  },
+  {
+    id: '3f1d79ed', project: 'sessions-viewer', date: '14 Jul', ts: 6,
+    msgs: [
+      { role: 'user', time: '10:05', text: "I want to add to the sessions tree a global search. It must be fast and not token consumptive — precise search first, fuzzy AI search later." },
+      { role: 'cc',   time: '10:08', text: "Suggested layout: a search panel above the sessions tree, exact-phrase matching over an index of user and assistant messages, results grouped by session with context snippets, click-through into the viewer." },
+      { role: 'user', time: '10:20', text: "Earlier today the Haiku test found the hermes board discussions well, but it created a session and burned tokens. The precise search should avoid both." }
+    ]
+  },
+  {
+    id: '8304671a', project: 'cash-tracker', date: '08 Jul', ts: 4,
+    msgs: [
+      { role: 'user', time: '16:00', text: "The docker deploy for cash tracker failed again after the VPS reboot, restart policy seems wrong." },
+      { role: 'cc',   time: '16:04', text: "Fixed: the container now uses restart unless-stopped, and I verified docker brings it back up after a simulated reboot." },
+      { role: 'tool', time: '16:04', text: "$ docker update --restart unless-stopped cash-tracker\ncash-tracker\n$ docker inspect -f '{{.HostConfig.RestartPolicy.Name}}' cash-tracker\nunless-stopped" }
+    ]
+  }
+];
+
+const q = document.getElementById('q');
+const results = document.getElementById('results');
+const summary = document.getElementById('summary');
+const matchcase = document.getElementById('matchcase');
+const tools = document.getElementById('tools');
+const msgsEl = document.getElementById('msgs');
+const placeholder = document.getElementById('placeholder');
+const crumb = document.getElementById('crumb');
+const WHO = { user: 'You', cc: 'CC', tool: 'Tool' };
+
+function esc(s) { return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// exact-phrase indexOf search; returns all match offsets in a message
+function findHits(text, phrase, caseSensitive) {
+  const hay = caseSensitive ? text : text.toLowerCase();
+  const needle = caseSensitive ? phrase : phrase.toLowerCase();
+  const hits = []; let i = 0;
+  while ((i = hay.indexOf(needle, i)) !== -1) { hits.push(i); i += needle.length; }
+  return hits;
+}
+
+// ~100 chars either side, trimmed to word boundaries, phrase highlighted
+function snippet(text, at, len) {
+  const R = 100;
+  let start = Math.max(0, at - R), end = Math.min(text.length, at + len + R);
+  if (start > 0) { const sp = text.indexOf(' ', start); if (sp !== -1 && sp < at) start = sp + 1; }
+  if (end < text.length) { const sp = text.lastIndexOf(' ', end); if (sp > at + len) end = sp; }
+  return (start > 0 ? '…' : '') + esc(text.slice(start, at)) +
+         '<mark>' + esc(text.slice(at, at + len)) + '</mark>' +
+         esc(text.slice(at + len, end)) + (end < text.length ? '…' : '');
+}
+
+function search() {
+  const phrase = q.value.trim();
+  results.innerHTML = '';
+  if (phrase.length < 2) {
+    summary.textContent = 'Type at least 2 characters to search.';
+    return;
+  }
+  let totalHits = 0;
+  const perSession = [];
+  for (const s of SESSIONS) {
+    const rows = [];
+    s.msgs.forEach((m, mi) => {
+      if (m.role === 'tool' && !tools.checked) return;
+      const hits = findHits(m.text, phrase, matchcase.checked);
+      if (hits.length) { totalHits += hits.length; rows.push({ mi, m, at: hits[0], n: hits.length }); }
+    });
+    if (rows.length) perSession.push({ s, rows });
+  }
+  perSession.sort((a, b) => b.s.ts - a.s.ts); // recency, not match count
+
+  if (!perSession.length) {
+    summary.innerHTML = 'No matches for <b>' + esc(phrase) + '</b>.';
+    results.innerHTML = '<div class="empty">Nothing found in user/assistant text.' +
+      (tools.checked ? '' : '<br>Try enabling “include tool output”.') + '</div>';
+    return;
+  }
+  summary.innerHTML = '<b>' + totalHits + '</b> match' + (totalHits === 1 ? '' : 'es') +
+                      ' in <b>' + perSession.length + '</b> session' + (perSession.length === 1 ? '' : 's');
+
+  perSession.forEach((group, gi) => {
+    const head = document.createElement('div');
+    head.className = 'sess-head';
+    head.innerHTML = '<span class="chev">' + (gi === 0 ? '▼' : '▶') + '</span>' +
+      '<span class="proj">' + esc(group.s.project) + '</span>' +
+      '<span class="sid">' + group.s.id + '</span>' +
+      '<span class="date">' + group.s.date + '</span>' +
+      '<span class="count">' + group.rows.reduce((a, r) => a + r.n, 0) + '</span>';
+    const snips = document.createElement('div');
+    snips.className = 'snips' + (gi === 0 ? '' : ' hidden');
+    head.onclick = () => {
+      snips.classList.toggle('hidden');
+      head.querySelector('.chev').textContent = snips.classList.contains('hidden') ? '▶' : '▼';
+    };
+    for (const r of group.rows) {
+      const d = document.createElement('div');
+      d.className = 'snip';
+      d.innerHTML = '<span class="who ' + r.m.role + '">' + WHO[r.m.role] + '</span>' +
+        '<span class="time">' + r.m.time + '</span>' +
+        '<span class="text">' + snippet(r.m.text, r.at, q.value.trim().length) + '</span>';
+      d.onclick = () => openInViewer(group.s, r.mi, d);
+      snips.appendChild(d);
+    }
+    results.appendChild(head);
+    results.appendChild(snips);
+  });
+}
+
+function openInViewer(session, msgIndex, snipEl) {
+  document.querySelectorAll('.snip.active').forEach(e => e.classList.remove('active'));
+  snipEl.classList.add('active');
+  placeholder.classList.add('hidden');
+  msgsEl.classList.remove('hidden');
+  crumb.textContent = session.project + ' › ' + session.id + ' · ' + session.date;
+  const phrase = q.value.trim();
+  msgsEl.innerHTML = '';
+  session.msgs.forEach((m, mi) => {
+    const d = document.createElement('div');
+    d.className = 'msg ' + m.role;
+    let body = esc(m.text);
+    if (phrase.length >= 2) {
+      const hits = findHits(m.text, phrase, matchcase.checked);
+      if (hits.length) {
+        let out = '', prev = 0;
+        for (const h of hits) {
+          out += esc(m.text.slice(prev, h)) + '<mark>' + esc(m.text.slice(h, h + phrase.length)) + '</mark>';
+          prev = h + phrase.length;
+        }
+        body = out + esc(m.text.slice(prev));
+      }
+    }
+    d.innerHTML = '<div class="meta"><b>' + WHO[m.role] + '</b> · ' + m.time + '</div>' +
+                  body.replace(/\n/g, '<br>');
+    if (mi === msgIndex) d.classList.add('flash');
+    msgsEl.appendChild(d);
+  });
+  const target = msgsEl.children[msgIndex];
+  target.scrollIntoView({ block: 'center' });
+}
+
+q.addEventListener('input', search);
+matchcase.addEventListener('change', search);
+tools.addEventListener('change', search);
+</script>
+</body>
+</html>
