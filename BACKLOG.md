@@ -162,3 +162,21 @@
   auto-opens the read-only conversation. Yury suspects this is wrong —
   question to settle: what SHOULD a single click show (select only?
   preview? nothing until double-click / explicit button?).
+- [ ] DISCUSS: viewer header information order (14 Jul 2026). The tree
+  reads folder → session, but the viewer header reads session title first
+  with the folder buried in the meta line below ("folder · N messages ·
+  session id · dates") — logically misleading. Reorder so the hierarchy
+  reads the same in both places.
+- [ ] DISCUSS: viewer header responsive folding (14 Jul 2026). Wide panel
+  is fine; narrow panel truncates the meta line badly instead of folding
+  gracefully. Priorities when space is tight: session start → last-message
+  time matter most; message count matters sometimes; the session id
+  probably should not live on this line at all (belongs elsewhere, see
+  more-menu item below).
+- [ ] DISCUSS: slim down the viewer's ⋯ menu (14 Jul 2026). Yury does not
+  use Copy conversation / Export Markdown / Reveal raw file from the
+  viewer — candidates to move to the tree's session context menu; goal is
+  a visually simple, lightweight viewer. Copy raw JSONL path should become
+  a copy icon (two overlapping squares) with a "copied" flash, sitting
+  together with a copyable session id — likely in the viewer, but where
+  exactly is open. Not urgent; decide placement before touching anything.
