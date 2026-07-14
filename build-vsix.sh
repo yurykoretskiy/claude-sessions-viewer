@@ -17,7 +17,11 @@ if [ ! -x "$VSCE" ]; then
   npm install --no-save @vscode/vsce >/dev/null 2>&1
 fi
 
-"$VSCE" package -o "$OUT" --no-git-tag-version --no-update-package-json --no-rewrite-relative-links
+# --baseImagesUrl: VS Code's extension-details page cannot resolve relative
+# image paths for sideloaded (vsix) extensions, so the packaged README must
+# carry absolute URLs. The repo is public, so raw.githubusercontent resolves.
+"$VSCE" package -o "$OUT" --no-git-tag-version --no-update-package-json \
+  --baseImagesUrl "https://raw.githubusercontent.com/yurykoretskiy/claude-sessions-viewer/master"
 
 echo "Built $OUT"
 if [ "${1:-}" = "--install" ]; then
