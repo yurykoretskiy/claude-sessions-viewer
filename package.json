@@ -2,7 +2,7 @@
   "name": "claude-sessions-viewer",
   "displayName": "Claude Sessions Viewer",
   "description": "Read Claude Code sessions like chat: locate current work, review history, export Markdown. Read-only, local, zero dependencies.",
-  "version": "1.16.1",
+  "version": "1.17.0",
   "publisher": "yurykoretskiy",
   "license": "MIT",
   "engines": {
@@ -42,12 +42,23 @@
     "views": {
       "claudeSessions": [
         {
+          "type": "webview",
+          "id": "claudeSessions.search",
+          "name": "Search",
+          "visibility": "collapsed"
+        },
+        {
           "id": "claudeSessions.tree",
           "name": "Sessions by Folder"
         }
       ]
     },
     "commands": [
+      {
+        "command": "claudeSessions.searchAll",
+        "title": "Claude Sessions: Search all sessions",
+        "icon": "$(search)"
+      },
       {
         "command": "claudeSessions.revealCurrent",
         "title": "Claude Sessions: Reveal current session",
@@ -137,6 +148,11 @@
         }
       ],
       "view/title": [
+        {
+          "command": "claudeSessions.searchAll",
+          "when": "view == claudeSessions.tree",
+          "group": "navigation@0"
+        },
         {
           "command": "claudeSessions.toggleGrouping",
           "when": "view == claudeSessions.tree && claudeSessions.mode == 'folders' && claudeSessions.timelineEnabled",
@@ -250,7 +266,7 @@
             "default": "system",
             "order": 1,
             "scope": "window",
-            "markdownDescription": "Theme for the conversation viewer."
+            "markdownDescription": "Theme for the conversation viewer and the search panel."
           },
           "claudeSessionsViewer.userLabel": {
             "type": "string",

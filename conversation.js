@@ -161,4 +161,4 @@ function conversationToText(convo, opts) {
   return lines.join('\n').trim() + '\n';
 }
 
-module.exports = { extractConversation, conversationToText };
+module.exports = { extractConversation, conversationToText, textFromContent, MSG_CHAR_CAP };

@@ -6,6 +6,29 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.17.0] — 2026-07-14
+
+### Added
+- **Global search across all sessions** — a Search panel above the sessions
+  tree (magnifier button on the tree's title bar, or
+  `Claude Sessions: Search all sessions`). Exact-phrase, case-toggle,
+  instant: text is indexed once into `search-index.json` and refreshed
+  incrementally, so no tokens and no new sessions are ever spent on
+  "where did I say this". Scope is what you and the agent said — the same
+  text the conversation viewer shows; tool traffic is not searched
+  (see BACKLOG).
+- Search results are grouped by session (newest first, folder · title ·
+  date · match count) with role, time, and a context snippet per matching
+  message. Clicking a result opens the read-only conversation with the
+  in-session search pre-filled, jumped to that exact message and
+  highlighted.
+
+### Changed
+- The `theme` setting (system/light/dark) now drives both the conversation
+  viewer and the new search panel, so the two always match.
+- The viewer's search toggle uses a proper magnifier icon — the same glyph
+  as the new tree title-bar button and the search panel.
+
 ## [1.16.1] — 2026-07-10
 
 ### Changed

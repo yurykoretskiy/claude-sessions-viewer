@@ -147,3 +147,18 @@
     messages that already fit inside the preview clamp (nothing to fold —
     detect overflow and suppress the control). Yury unsure the current
     always-on chevron is right.
+
+## Global search follow-ups <!-- #claude -->
+
+- [ ] Tool-content search (deferred from search v1, 14 Jul 2026). v1
+  searches user + assistant chat text only — the same text the viewer
+  renders. If a few days of real use show copy-paste sources going
+  unfound, add an opt-in scope for tool traffic in two tiers:
+  Claude-authored tool inputs (Write/Edit file bodies, Bash commands)
+  first, raw tool results second. Design notes: keep the chat index
+  small/in-memory; tool tiers should stream raw JSONL on demand rather
+  than inflate the index.
+- [ ] DISCUSS: tree single-click behavior. Clicking a session row
+  auto-opens the read-only conversation. Yury suspects this is wrong —
+  question to settle: what SHOULD a single click show (select only?
+  preview? nothing until double-click / explicit button?).

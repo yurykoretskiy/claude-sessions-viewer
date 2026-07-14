@@ -7,6 +7,7 @@ const path = require('path');
 const os = require('os');
 const { fileURLToPath } = require('url');
 const { extractConversation, conversationToText } = require('./conversation');
+const { SEARCH_SVG } = require('./icons');
 
 const RENDER_WINDOW = 200; // big sessions: render latest N first, "render all" banner
 
@@ -50,6 +51,7 @@ class ConversationViewer {
     const existing = this.panels.get(session.id);
     if (existing) {
       existing.panel.reveal(opts.beside ? vscode.ViewColumn.Beside : undefined);
+      if (opts.find) existing.panel.webview.postMessage({ type: 'find', ...opts.find });
       return Promise.resolve();
     }
     const inFlight = this.opening.get(session.id);
@@ -92,7 +94,7 @@ class ConversationViewer {
         this.panels.delete(session.id);
       });
       panel.webview.onDidReceiveMessage((msg) => this.onMessage(entry, msg));
-      panel.webview.html = this.html(entry);
+      panel.webview.html = this.html(entry, opts.find || null);
     })();
 
     this.opening.set(session.id, promise);
@@ -201,11 +203,12 @@ class ConversationViewer {
     }
   }
 
-  html(entry) {
+  html(entry, find = null) {
     const { session, convo, title, folder } = entry;
     const cfg = this.config;
     const nonce = Math.random().toString(36).slice(2);
     const data = JSON.stringify({
+      find,
       messages: convo.messages,
       userLabel: cfg.userLabel,
       agentLabel: cfg.agentLabel,
@@ -257,7 +260,7 @@ class ConversationViewer {
   .vhead { padding:10px 16px 8px; border-bottom:1px solid var(--line); background:color-mix(in srgb, var(--panel) 97%, transparent); flex-shrink:0; position:relative; z-index:8; }
   .vrow { display:flex; align-items:center; gap:10px; }
   .title { font-size:17px; font-weight:680; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .ibtn { width:30px; height:30px; border:1px solid transparent; background:transparent; color:var(--mut); font-size:14px; cursor:pointer; padding:0; border-radius:7px; }
+  .ibtn { width:30px; height:30px; border:1px solid transparent; background:transparent; color:var(--mut); font-size:14px; cursor:pointer; padding:0; border-radius:7px; display:inline-flex; align-items:center; justify-content:center; }
   .ibtn:hover { background:var(--btn2); color:var(--fg); }
   .ibtn.open { background:var(--btn2); color:var(--agent-strong); }
   [data-tip] { position:relative; }
@@ -411,7 +414,7 @@ class ConversationViewer {
       <button class="seg${cfg.viewerDensity === 'full' ? ' on' : ''}" data-d="full">Full</button>
     </div>
     <span class="spacer"></span>
-    <button class="ibtn" id="searchToggle" aria-label="Search" data-tip="Search">⌕</button>
+    <button class="ibtn" id="searchToggle" aria-label="Search" data-tip="Search">${SEARCH_SVG}</button>
     <button class="ibtn" id="moreBtn" aria-label="More options" data-tip="More options">⋯</button>
     <div class="moremenu" id="moreMenu">
       <button class="mm-item" id="mmCopy">Copy conversation</button>
@@ -823,8 +826,36 @@ function updateRail() {
   scrollTimer = setTimeout(() => $('chatwrap').classList.remove('scrolling'), 850);
 }
 
+// Global-search deep link: open the in-session search bar with the phrase
+// and land on the match closest to the target message timestamp. Reuses the
+// existing matches/highlight machinery; renderAll is forced because the
+// target may sit outside the latest-200 window.
+function applyFind(f) {
+  if (!f || !f.query) return;
+  renderAll = true;
+  filter = 'all';
+  document.querySelectorAll('[data-f]').forEach(x => x.classList.toggle('on', x.dataset.f === 'all'));
+  $('searchbar').classList.add('open');
+  $('searchToggle').classList.add('open');
+  $('search').value = f.query;
+  currentMatch = 0;
+  render(true);
+  if (f.ts && matches.length) {
+    const t = Date.parse(f.ts) || 0;
+    let best = 0, bestD = Infinity;
+    matches.forEach((mi, k) => {
+      const d = Math.abs((Date.parse(DATA.messages[mi].ts || 0) || 0) - t);
+      if (d < bestD) { bestD = d; best = k; }
+    });
+    currentMatch = best;
+    render(true);
+  }
+  updateMatches(true);
+}
+
 window.addEventListener('message', e => {
   const m = e.data;
+  if (m.type === 'find') { applyFind(m); return; }
   if (m.type === 'update') {
     DATA.messages = m.messages;
     $('meta').textContent = '${esc(folder)} · ' + DATA.messages.filter(x => x.role !== 'tool').length +
@@ -937,6 +968,7 @@ window.addEventListener('resize', updateRail);
   rail.addEventListener('pointercancel', stop);
 })();
 render();
+if (DATA.find) applyFind(DATA.find);
 </script>
 </body>
 </html>`;

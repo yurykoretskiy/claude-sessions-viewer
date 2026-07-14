@@ -217,4 +217,4 @@ function isAutomationSession(s) {
   return typeof s.entrypoint === 'string' && s.entrypoint.startsWith('sdk');
 }
 
-module.exports = { indexAll, PROJECTS_DIR, effectiveTs, isAutomationSession };
+module.exports = { indexAll, PROJECTS_DIR, effectiveTs, isAutomationSession, listSessionFiles, loadCache, saveCache };

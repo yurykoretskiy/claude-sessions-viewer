@@ -4,6 +4,7 @@ const path = require('path');
 const os = require('os');
 const { indexAll, isAutomationSession } = require('./indexer');
 const { ConversationViewer } = require('./viewer');
+const { SearchViewProvider } = require('./search-view');
 
 const TIMELINE_TITLE_MAX = 48;
 const LIVE_WINDOW_MS = 5 * 60 * 1000;
@@ -537,6 +538,14 @@ function activate(context) {
   const viewer = new ConversationViewer(context);
   const panelFlagFile = path.join(context.globalStorageUri.fsPath, 'open-panel-flag.json');
 
+  // Global search panel above the tree; queries run in this host process.
+  const searchProvider = new SearchViewProvider(context, provider, viewer);
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider('claudeSessions.search', searchProvider, {
+      webviewOptions: { retainContextWhenHidden: true },
+    })
+  );
+
   // Always-available entry point: status-bar ✳ reveals the current session.
   const statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90);
   statusItem.text = '$(sparkle)';
@@ -551,6 +560,7 @@ function activate(context) {
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('claudeSessionsViewer.reveal.enabled')) updateRevealStatus();
+      if (e.affectsConfiguration('claudeSessionsViewer.theme')) searchProvider.postTheme();
       if (e.affectsConfiguration('claudeSessionsViewer.promptChildren.enabled')) provider.refresh();
       if (e.affectsConfiguration('claudeSessionsViewer.showAutomationSessions')) provider.refresh();
       if (e.affectsConfiguration('claudeSessionsViewer.timeline.enabled')) {
@@ -569,6 +579,8 @@ function activate(context) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeSessions.refresh', () => provider.refresh()),
+
+    vscode.commands.registerCommand('claudeSessions.searchAll', () => searchProvider.reveal()),
 
     vscode.commands.registerCommand('claudeSessions.openSettings', () =>
       vscode.commands.executeCommand('workbench.action.openSettings', '@ext:yurykoretskiy.claude-sessions-viewer')
