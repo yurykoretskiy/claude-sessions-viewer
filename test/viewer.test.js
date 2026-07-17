@@ -189,9 +189,12 @@ test('generated HTML uses one viewer mode with manual folding and no density tog
   assert.match(html, /max-height:calc\(var\(--fold-lines, 4\) \* 1\.52em\)/,
     'hard height cap so folded code blocks stay clamped');
   assert.match(html, /--fold-lines:4/, 'default preview length is 4 lines');
-  assert.match(html, /const isFolded = \(i\) => overrides\.has\(i\)/, 'folding stays per message');
-  assert.match(html, /id="namesBtn"|id="namesMenu"/,
-    'speaker naming controls stay inside the viewer');
+  assert.match(html, /function needsMore\(indices\)/, 'long messages get progressive disclosure');
+  assert.doesNotMatch(html, /id="namesBtn"|id="namesMenu"|id="showNames"/,
+    'speaker names are no longer controlled inside the viewer');
+  assert.match(html, /id="modelToggle"/);
+  assert.doesNotMatch(html, /id="mstrip"|renderModelStrip/,
+    'model display is attached to messages instead of a timeline');
   assert.doesNotMatch(html, /data-th=/,
     'theme stays in normal VS Code settings');
   assert.match(html, /id="copyConversation"/);
@@ -225,11 +228,12 @@ test('generated HTML uses the approved speaker palettes and keeps orange as the 
   assert.match(html, /--user-bub:#e8f0f5; --user-edge:#5b7c8f; --user-strong:#456579/);
   assert.match(html, /--agent-bub:#ececf7; --agent-edge:#6865a5; --agent-strong:#55518f/);
   assert.match(html, /--claude-spark:#d97757/);
-  assert.match(html, /"mascotUri":"mascot\.png"/, 'viewer exposes the mascot to rendered Claude messages');
-  assert.match(html, /escAttr\(DATA\.mascotUri\)/, 'Claude role marker uses the mascot image');
+  assert.match(html, /"claudeIconUri":"claude-code-logo-light\.svg"/, 'viewer exposes the Claude favicon for message details');
+  assert.match(html, /escAttr\(DATA\.claudeIconUri\)/, 'message details use the Claude favicon');
   assert.match(html, /\.msg\.assistant \{[^}]*border-left:3px solid var\(--agent-edge\)/);
   assert.match(html, /\.msg\.user \{[^}]*border-right:3px solid var\(--user-edge\)/);
-  assert.match(html, /\.msg\.assistant \.role-icon \{ color:var\(--claude-spark\); \}/);
+  assert.match(html, /\.message-footer-avatar/);
+  assert.match(html, /CLAUDE.*modelLabel\(m\.model\)/s);
   assert.match(html, /\.msg\.user code\.inline \{ color:var\(--user-strong\); \}/);
 });
 
@@ -239,7 +243,6 @@ test('filter chips use the configured names in All, Agent, User order without fo
     get: (key, fallback) => ({
       userLabel: 'Yury',
       agentLabel: 'Clone',
-      showNames: true,
       theme: 'system',
     }[key] ?? fallback),
   });
@@ -317,12 +320,12 @@ test('turn-merge, unified fold, and draggable rail are present in the generated 
   assert.match(script, /class="part" data-i=/);
   assert.match(script, /part-sep/);
 
-  // Unified fold: one mechanism — per-bubble overrides against the mode
-  // default, a visible chevron on every bubble, and NO Read more anywhere.
+  // Progressive disclosure: long bubbles use a per-bubble override and their
+  // own Show more / Show less control.
   assert.match(script, /overrides/);
-  assert.match(script, /fold-ind/);
-  assert.doesNotMatch(script, /Read more/);
-  assert.doesNotMatch(script, /Show less/);
+  assert.match(script, /Show more/);
+  assert.match(script, /Show less/);
+  assert.doesNotMatch(script, /fold-ind/);
   assert.match(html, /\.msg\.folded \.bodywrap/);
 
   // Bold renders as <strong> (the **asterisks** bug).
@@ -362,7 +365,6 @@ test('viewer reads theme from VS Code settings and labels from the viewer config
       theme: 'dark',
       userLabel: 'Yury',
       agentLabel: 'Claude',
-      showNames: false,
     }[key] ?? fallback),
   });
   try {
@@ -373,7 +375,7 @@ test('viewer reads theme from VS Code settings and labels from the viewer config
       title: 'T',
       folder: 'F',
     });
-    assert.match(html, /data-names="off"/);
+    assert.doesNotMatch(html, /data-names=/);
     assert.match(html, /"userLabel":"Yury"/);
     assert.match(html, /"agentLabel":"Claude"/);
     assert.match(html, /"theme":"dark"/);

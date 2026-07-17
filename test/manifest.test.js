@@ -63,3 +63,11 @@ test('global search is preserved in source but not activated in the main extensi
   assert.deepStrictEqual(viewIds, ['claudeSessions.tree']);
   assert.ok(!commandIds.includes('claudeSessions.searchAll'));
 });
+
+test('speaker labels are global settings and the viewer has no naming toggle', () => {
+  const groups = manifest.contributes.configuration;
+  const viewer = groups.find((group) => group.order === 2);
+  assert.strictEqual(viewer.properties['claudeSessionsViewer.userLabel'].default, 'USER');
+  assert.strictEqual(viewer.properties['claudeSessionsViewer.agentLabel'].default, 'CLAUDE');
+  assert.ok(!viewer.properties['claudeSessionsViewer.showNames']);
+});

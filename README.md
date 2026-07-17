@@ -145,9 +145,10 @@ session-level browsing.
   for tree-only reveal.
 - `claudeSessionsViewer.liveRefresh.enabled` — keep an opened viewer updated
   while the transcript changes. Off by default.
-- Speaker names, labels, and visibility are controlled from the viewer's `⋯`
-  menu and stay with the viewer experience rather than the global Settings
-  page.
+- `claudeSessionsViewer.userLabel` and `claudeSessionsViewer.agentLabel` —
+  labels shown in the optional message footer and conversation copies.
+- The model button in the viewer toggles compact per-message footers. Long
+  messages use per-message **Show more** / **Show less** controls.
 - `claudeSessionsViewer.promptChildren.enabled` — show prompt/message rows
   under sessions. Off by default.
 - `claudeSessionsViewer.timeline.enabled` — show the experimental flat session

@@ -2,7 +2,7 @@
   "name": "claude-sessions-viewer",
   "displayName": "Claude Sessions Viewer",
   "description": "Read Claude Code sessions like chat: locate current work, review history, export Markdown. Read-only, local, zero dependencies.",
-  "version": "1.18.10",
+  "version": "1.18.11",
   "publisher": "yurykoretskiy",
   "license": "MIT",
   "engines": {
@@ -281,6 +281,20 @@
             "order": 3,
             "scope": "window",
             "markdownDescription": "How many lines a manually folded message shows as its preview."
+          },
+          "claudeSessionsViewer.userLabel": {
+            "type": "string",
+            "default": "USER",
+            "order": 4,
+            "scope": "window",
+            "markdownDescription": "Label used for user messages in the viewer footer and conversation copies."
+          },
+          "claudeSessionsViewer.agentLabel": {
+            "type": "string",
+            "default": "CLAUDE",
+            "order": 5,
+            "scope": "window",
+            "markdownDescription": "Label used for assistant messages in the viewer footer and conversation copies."
           }
         }
       },

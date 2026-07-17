@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { fileURLToPath } = require('url');
-const { extractConversation, conversationToText, computeModelRuns } = require('./conversation');
+const { extractConversation, conversationToText } = require('./conversation');
 const { SEARCH_SVG, MODEL_SVG, COPY_SVG } = require('./icons');
 
 const RENDER_WINDOW = 200; // big sessions: render latest N first, "render all" banner
@@ -36,16 +36,10 @@ class ConversationViewer {
 
   get config() {
     const c = vscode.workspace.getConfiguration('claudeSessionsViewer');
-    const state = this.context && this.context.globalState;
-    const stored = state && typeof state.get === 'function' ? state.get('viewerLabels') : null;
-    const userLabel = cleanLabel(stored && stored.userLabel !== undefined ? stored.userLabel : c.get('userLabel', 'USER'), 'USER');
-    const agentLabel = cleanLabel(stored && stored.agentLabel !== undefined ? stored.agentLabel : c.get('agentLabel', 'CLAUDE'), 'CLAUDE');
-    const showNames = stored && stored.showNames !== undefined ? !!stored.showNames : c.get('showNames', true);
     return {
       theme: c.get('theme', 'system'),
-      userLabel,
-      agentLabel,
-      showNames,
+      userLabel: cleanLabel(c.get('userLabel', 'USER'), 'USER'),
+      agentLabel: cleanLabel(c.get('agentLabel', 'CLAUDE'), 'CLAUDE'),
       liveRefresh: c.get('liveRefresh.enabled', false),
       shortPreviewLines: c.get('shortPreviewLines', 4),
     };
@@ -126,7 +120,7 @@ class ConversationViewer {
           folder,
           userLabel: cfg.userLabel,
           agentLabel: cfg.agentLabel,
-          names: cfg.showNames,
+          names: true,
           filter: 'all',
           withTools: false,
         }));
@@ -144,17 +138,6 @@ class ConversationViewer {
           .map((m) => m.text)
           .join('\n\n');
         if (text) await vscode.env.clipboard.writeText(text);
-        break;
-      }
-      case 'setLabels': {
-        const state = this.context && this.context.globalState;
-        if (state && typeof state.update === 'function') {
-          await state.update('viewerLabels', {
-            userLabel: cleanLabel(msg.userLabel, 'USER'),
-            agentLabel: cleanLabel(msg.agentLabel, 'CLAUDE'),
-            showNames: !!msg.showNames,
-          });
-        }
         break;
       }
       case 'openLink': {
@@ -209,10 +192,8 @@ class ConversationViewer {
     const data = JSON.stringify({
       find,
       messages: convo.messages,
-      runs: computeModelRuns(convo.messages),
       userLabel: cfg.userLabel,
       agentLabel: cfg.agentLabel,
-      showNames: cfg.showNames,
       theme: cfg.theme,
       foldLines: Math.max(1, Math.min(30, Number(cfg.shortPreviewLines) || 4)),
       window: RENDER_WINDOW,
@@ -220,6 +201,9 @@ class ConversationViewer {
       rawPath: session.file,
       cwd: session.cwd,
       mascotUri,
+      claudeIconUri: webview && typeof webview.asWebviewUri === 'function'
+        ? webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'assets', 'claude-code-logo-light.svg')).toString()
+        : 'claude-code-logo-light.svg',
     }).replace(/</g, '\\u003c');
     const messageCopyIcon = JSON.stringify(COPY_SVG).replace(/</g, '\\u003c');
     const nMsgs = convo.messages.filter((m) => m.role !== 'tool').length;
@@ -281,15 +265,6 @@ class ConversationViewer {
   .seg:last-child { border-right:none; }
   .seg.on { background:var(--btn2); color:var(--fg); }
   .spacer { flex:1 1 auto; }
-  .namesmenu { position:absolute; top:100%; left:14px; margin-top:6px; background:var(--panel); border:1px solid var(--line);
-    border-radius:10px; padding:8px; font-size:12px; z-index:20; display:none; width:250px;
-    box-shadow:0 8px 28px rgba(0,0,0,.16); }
-  .namesmenu.open { display:block; }
-  .settings-title { color:var(--mut); font-size:11px; text-transform:uppercase; letter-spacing:.04em; padding:4px 8px 2px; }
-  .settings-row { display:flex; align-items:center; gap:8px; margin:6px 8px; }
-  .settings-row .lbl { color:var(--mut); width:56px; flex-shrink:0; }
-  .settings-row input[type=text] { background:var(--bg); border:1px solid var(--line); color:var(--fg);
-    border-radius:6px; padding:4px 7px; min-width:0; flex:1; font-size:12px; }
   .searchbar { display:none; grid-template-columns:1fr auto auto auto auto; align-items:center; gap:7px;
     padding:8px 16px; border-bottom:1px solid var(--line); flex-shrink:0; z-index:4; }
   .searchbar.open { display:grid; }
@@ -313,11 +288,7 @@ class ConversationViewer {
        containers), so a hard height cap guarantees the preview stays short */
     max-height:calc(var(--fold-lines, 4) * 1.52em); }
   .part-sep { height:1px; background:color-mix(in srgb, var(--line) 55%, transparent); margin:9px -3px; }
-  .msg:not(.folded) .who { cursor:pointer; }
   .msg, .msg.folded { padding-right:26px; }
-  .fold-ind { position:absolute; top:5px; right:7px; width:16px; height:16px; line-height:15px; text-align:center;
-    color:var(--mut); opacity:.55; cursor:pointer; font-size:11px; border-radius:5px; user-select:none; }
-  .fold-ind:hover { opacity:1; background:var(--btn2); color:var(--fg); }
   .msg.user { margin-left:auto; background:var(--user-bub); border-right:3px solid var(--user-edge); border-bottom-right-radius:4px; }
   .msg.assistant { margin-right:auto; background:var(--agent-bub); border-left:3px solid var(--agent-edge); border-bottom-left-radius:4px; }
   .msg-copy { position:absolute; bottom:-8px; width:22px; height:22px; padding:0; display:flex; align-items:center; justify-content:center;
@@ -329,13 +300,12 @@ class ConversationViewer {
   .msg-copy:hover, .msg-copy:focus-visible, .msg-copy.copied { opacity:1; color:var(--fg); background:var(--btn2); outline:none; }
   .msg-copy svg { width:13px; height:13px; }
   .msg-copy .copied-mark { font-size:14px; line-height:1; }
-  .who { font-size:11px; color:var(--mut); margin-bottom:3px; letter-spacing:.02em; font-weight:700; text-transform:uppercase; }
-  .role-icon { display:inline-flex; align-items:center; justify-content:center; margin-right:4px;
-    width:14px; height:14px; font-size:12px; line-height:1; vertical-align:-2px; }
-  .role-icon img { display:block; width:16px; height:12px; object-fit:contain; }
-  .msg.assistant .role-icon { color:var(--claude-spark); }
-  .msg.user .role-icon { color:var(--user-edge); }
-  body[data-names="off"] .who { display:none; }
+  .message-footer { display:flex; align-items:center; gap:6px; margin-top:9px; padding-top:7px;
+    border-top:1px solid color-mix(in srgb, var(--line) 70%, transparent); color:var(--mut);
+    font-size:10.5px; letter-spacing:.01em; min-height:18px; }
+  .message-footer-avatar { width:15px; height:15px; flex:0 0 15px; object-fit:contain; }
+  body.dark .message-footer-avatar { filter:invert(1) opacity(.84); }
+  .message-footer-user { color:var(--user-strong); font-size:10px; font-weight:700; }
   .body p { margin:0 0 7px; white-space:pre-wrap; }
   .body p:last-child { margin-bottom:0; }
   .body a { color:var(--vscode-textLink-foreground,#2677c9); text-decoration:underline; text-underline-offset:2px; }
@@ -370,17 +340,6 @@ class ConversationViewer {
   mark.current { background:#ffc85a; box-shadow:0 0 0 2px rgba(217,119,87,.45); }
   .more { color:var(--agent-strong); font-size:12px; cursor:pointer; margin-top:6px; display:block; }
   .more:hover { text-decoration:underline; }
-  .mstrip { position:absolute; right:29px; top:16px; bottom:72px; width:16px; border-radius:4px;
-    background:var(--rail-track); display:none; flex-direction:column; overflow:hidden; z-index:5; }
-  .mstrip.open { display:flex; }
-  .mstrip .seg { width:100%; position:relative; display:flex; align-items:center; justify-content:center; }
-  .mstrip .seg + .seg { border-top:1px solid var(--line); }
-  .mstrip .seg:hover { background:var(--btn2); }
-  .mstrip .seg .name { writing-mode:vertical-rl; transform:rotate(180deg); font-size:9px; font-weight:700;
-    letter-spacing:.02em; color:var(--mut); white-space:nowrap; pointer-events:none; }
-  .mstrip .seg.tiny .name { display:none; }
-  .mstrip .seg[data-tip]::after { top:50%; left:auto; right:calc(100% + 8px); bottom:auto;
-    transform:translateY(-50%); }
   .rail { position:absolute; right:6px; top:16px; bottom:72px; width:17px; border-radius:999px;
     background:transparent; cursor:grab; touch-action:none; z-index:5; }
   .rail::before { content:''; position:absolute; left:50%; transform:translateX(-50%); top:0; bottom:0;
@@ -410,7 +369,7 @@ class ConversationViewer {
   }
 </style>
 </head>
-<body class="sys" data-names="${cfg.showNames ? 'on' : 'off'}" style="--fold-lines:${Math.max(1, Math.min(30, Number(cfg.shortPreviewLines) || 4))}">
+<body class="sys" style="--fold-lines:${Math.max(1, Math.min(30, Number(cfg.shortPreviewLines) || 4))}">
 <main class="viewer">
   <div class="vhead">
     <div class="vrow">
@@ -420,13 +379,6 @@ class ConversationViewer {
     <div class="meta" id="meta">${esc(folder)} · ${nMsgs} messages · ${esc(session.id)} · ${fmt(convo.firstTs)} → ${fmt(convo.lastTs)}</div>
   </div>
   <div class="controls">
-    <button class="ibtn" id="namesBtn" aria-label="Speaker names" data-tip="Speaker names">⋯</button>
-    <div class="namesmenu" id="namesMenu">
-      <div class="settings-title">Speaker names</div>
-      <div class="settings-row"><label><input type="checkbox" id="showNames"${cfg.showNames ? ' checked' : ''}> Show names</label></div>
-      <div class="settings-row"><span class="lbl">You</span><input type="text" id="userLabel" maxlength="40"></div>
-      <div class="settings-row"><span class="lbl">Agent</span><input type="text" id="agentLabel" maxlength="40"></div>
-    </div>
     <div class="segmented" id="filterSeg">
       <button class="seg on" data-f="all">All</button>
       <button class="seg" data-f="assistant" id="chipAgent">${esc(cfg.agentLabel)}</button>
@@ -434,7 +386,7 @@ class ConversationViewer {
     </div>
     <button class="ibtn" id="copyConversation" aria-label="Copy whole conversation" data-tip="Copy whole conversation">${COPY_SVG}</button>
     <span class="spacer"></span>
-    <button class="ibtn" id="modelToggle" aria-label="Model lane" data-tip="Which model handled what">${MODEL_SVG}</button>
+    <button class="ibtn" id="modelToggle" aria-label="Show message details" aria-pressed="false" data-tip="Show model and speaker">${MODEL_SVG}</button>
     <button class="ibtn" id="searchToggle" aria-label="Search" data-tip="Search">${SEARCH_SVG}</button>
   </div>
   <div class="searchbar" id="searchbar">
@@ -446,7 +398,6 @@ class ConversationViewer {
   </div>
   <div class="chatwrap" id="chatwrap">
     <div class="chat" id="chat"></div>
-    <div class="mstrip" id="mstrip" aria-label="Model lane" role="img"></div>
     <div class="rail" id="rail" role="scrollbar" aria-label="Conversation position" aria-orientation="vertical"><div class="rail-fill" id="railFill"></div><div class="rail-thumb" id="railThumb"></div></div>
     <div class="pospill" id="pospill">msg 1 / ${nMsgs}</div>
     <button class="jump" id="jump" title="Jump to last message">↓</button>
@@ -465,22 +416,36 @@ let renderAll = DATA.messages.length <= DATA.window * 1.2;
 let currentMatch = 0;
 let matches = [];
 let scrollTimer = 0;
-// Bubble ids manually folded by the reader. Long messages remain expanded by
-// default; the existing per-bubble chevron is the only folding control.
+let showFooter = false;
+// Bubble ids expanded by the reader. Long messages start compact and expose
+// their own Show more / Show less control.
 const overrides = new Set();
 const toggleFold = (i) => { if (overrides.has(i)) overrides.delete(i); else overrides.add(i); };
-const isFolded = (i) => overrides.has(i);
 const $ = id => document.getElementById(id);
 const escHtml = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
 document.body.className = DATA.theme === 'system' ? 'sys' : DATA.theme;
-document.body.dataset.names = DATA.showNames ? 'on' : 'off';
 
 function labels() {
   return {
     user: DATA.userLabel || 'USER',
     agent: DATA.agentLabel || 'CLAUDE'
   };
+}
+
+function needsMore(indices) {
+  return indices.some(i => String(DATA.messages[i] && DATA.messages[i].text || '').length > FOLDED_RENDER_CAP);
+}
+
+function messageFooter(m) {
+  const isUser = m.role === 'user';
+  const label = isUser
+    ? (DATA.userLabel || 'USER')
+    : (DATA.agentLabel || 'CLAUDE') + (m.model ? ' · ' + modelLabel(m.model) : '');
+  const icon = isUser
+    ? '<span class="message-footer-user" aria-hidden="true">●</span>'
+    : '<img class="message-footer-avatar" src="' + escAttr(DATA.claudeIconUri) + '" alt="">';
+  return '<div class="message-footer">' + icon + '<span>' + escHtml(label) + '</span></div>';
 }
 
 function dayOf(ts){ if(!ts) return null; const d = new Date(ts);
@@ -718,12 +683,12 @@ function render(keepScroll) {
     else groups.push({ role: m.role, indices: [i] });
     groupOf[i] = groups[groups.length - 1].indices[0];
   }
-  // Bubbles containing search matches must be readable: force-unfold them.
+  // Bubbles containing search matches must be readable: force-expand them.
   if ($('search').value.trim())
     matches.forEach(i => {
       const g = groupOf[i];
       if (g === undefined) return;
-      overrides.delete(g);
+      overrides.add(g);
     });
   let lastDay = null;
   const frag = [];
@@ -732,11 +697,8 @@ function render(keepScroll) {
     const g0 = g.indices[0];
     const day = dayOf(msgs[g0].ts);
     if (day && day !== lastDay && filter === 'all') { frag.push('<div class="day">' + day + '</div>'); lastDay = day; }
-    const who = g.role === 'user' ? l.user : l.agent;
-    const icon = g.role === 'user'
-      ? '●'
-      : '<img src="' + escAttr(DATA.mascotUri) + '" alt="">';
-    const folded = isFolded(g0);
+    const hasMore = needsMore(g.indices);
+    const folded = hasMore && !overrides.has(g0);
     const parts = g.indices.map(idx => {
       const m = msgs[idx];
       const body = renderMessageBody(m, idx, matches[currentMatch] === idx, folded);
@@ -744,9 +706,12 @@ function render(keepScroll) {
       return '<div class="part" data-i="' + idx + '">' + attachments + '<div class="body">' + body.html + '</div></div>';
     }).join('<div class="part-sep"></div>');
     const foldedClass = folded ? ' folded' : '';
-    const foldInd = '<span class="fold-ind" data-fold="' + g0 + '" title="' + (folded ? 'Unfold' : 'Fold') + '">' + (folded ? '⌄' : '⌃') + '</span>';
+    const moreButton = hasMore
+      ? '<button class="more" data-fold="' + g0 + '" type="button">' + (folded ? 'Show more' : 'Show less') + '</button>'
+      : '';
     const copyButton = '<button class="msg-copy" data-copy="' + g.indices.join(',') + '" aria-label="Copy message" title="Copy message">' + MESSAGE_COPY_ICON + '</button>';
-    frag.push('<div class="msg ' + g.role + foldedClass + '" data-i="' + g0 + '" data-day="' + (day || '') + '">' + foldInd + '<div class="who"><span class="role-icon">' + icon + '</span>' + escHtml(who) + '</div><div class="bodywrap">' + parts + '</div>' + copyButton + '</div>');
+    const footer = showFooter ? messageFooter(msgs[g.indices[g.indices.length - 1]]) : '';
+    frag.push('<div class="msg ' + g.role + foldedClass + '" data-i="' + g0 + '" data-day="' + (day || '') + '"><div class="bodywrap">' + parts + '</div>' + moreButton + footer + copyButton + '</div>');
   }
   frag.push('<div class="bottom-spacer" aria-hidden="true"></div>');
   chat.insertAdjacentHTML('beforeend', frag.join(''));
@@ -773,21 +738,12 @@ function render(keepScroll) {
       btn.setAttribute('aria-label', 'Copy message');
     }, 1400);
   });
-  // Every bubble folds/unfolds individually, in both modes: the corner
-  // chevron always toggles; a folded bubble also unfolds on click anywhere;
-  // an unfolded bubble also folds on its name header.
-  chat.querySelectorAll('.fold-ind').forEach(el => el.onclick = (e) => {
+  // Long bubbles expand only through their own control, matching the
+  // progressive-disclosure behavior of the official Claude interface.
+  chat.querySelectorAll('.more').forEach(el => el.onclick = (e) => {
     e.stopPropagation();
     toggleFold(+el.dataset.fold);
     render(true);
-  });
-  chat.querySelectorAll('.msg').forEach(el => {
-    const i = +el.dataset.i;
-    el.onclick = (e) => {
-      if (e.target.closest('a[data-href], .attach, .copy-code, .msg-copy')) return;
-      if (el.classList.contains('folded')) { toggleFold(i); render(true); }
-      else if (e.target.closest('.who')) { toggleFold(i); render(true); }
-    };
   });
   updateMatches(false);
   if (keepScroll && !wasAtBottom) chat.scrollTop = prevScroll;
@@ -804,25 +760,6 @@ function fmtHM(ts){ if(!ts) return '?'; return new Date(ts).toLocaleTimeString('
 function modelLabel(id) {
   const m = String(id || '').match(/claude-([a-z]+)/i);
   return m ? m[1][0].toUpperCase() + m[1].slice(1) : (id || 'Unknown');
-}
-
-// Which model handled which stretch of the conversation: a thin neutral
-// strip, divider lines only (no per-model color — a flat list of chips
-// already does that job better). Whole-session and static: computed once
-// server-side (DATA.runs), independent of scroll/filter/window state.
-function renderModelStrip() {
-  const strip = $('mstrip');
-  const runs = DATA.runs || [];
-  const total = runs.reduce((s, r) => s + r.turns, 0) || 1;
-  strip.innerHTML = runs.map(r => {
-    const label = modelLabel(r.model);
-    const range = r.tsStart === r.tsEnd ? fmtHM(r.tsStart) : fmtHM(r.tsStart) + '–' + fmtHM(r.tsEnd);
-    const tip = label + ' · ' + r.turns + ' turn' + (r.turns === 1 ? '' : 's') + ' · ' + range;
-    const pct = Math.max(1.5, (r.turns / total) * 100);
-    const tiny = pct < 8 ? ' tiny' : '';
-    return '<div class="seg' + tiny + '" style="height:' + pct + '%" data-tip="' + escAttr(tip) + '">' +
-      '<span class="name">' + escHtml(label) + '</span></div>';
-  }).join('');
 }
 
 function updateMatches(jump) {
@@ -907,44 +844,18 @@ window.addEventListener('message', e => {
 
 $('resume').onclick = () => vscodeApi.postMessage({ type:'resume' });
 $('copyConversation').onclick = () => vscodeApi.postMessage({ type:'copy' });
-$('namesBtn').onclick = (e) => { e.stopPropagation(); $('namesMenu').classList.toggle('open'); };
-document.addEventListener('click', e => {
-  if (!$('namesMenu').classList.contains('open')) return;
-  if ($('namesMenu').contains(e.target)) return;
-  $('namesMenu').classList.remove('open');
-});
 $('searchToggle').onclick = () => {
   $('searchbar').classList.toggle('open');
   $('searchToggle').classList.toggle('open', $('searchbar').classList.contains('open'));
   if ($('searchbar').classList.contains('open')) $('search').focus();
 };
 $('modelToggle').onclick = () => {
-  $('mstrip').classList.toggle('open');
-  $('modelToggle').classList.toggle('open', $('mstrip').classList.contains('open'));
-};
-renderModelStrip();
-$('jump').onclick = () => { $('chat').scrollTop = $('chat').scrollHeight; updateRail(); };
-$('showNames').onchange = e => {
-  document.body.dataset.names = e.target.checked ? 'on' : 'off';
-  vscodeApi.postMessage({ type:'setLabels', userLabel: DATA.userLabel, agentLabel: DATA.agentLabel, showNames: e.target.checked });
-};
-$('userLabel').value = DATA.userLabel;
-$('agentLabel').value = DATA.agentLabel;
-let labelSaveTimer = 0;
-const saveLabels = () => {
-  DATA.userLabel = $('userLabel').value.trim() || 'USER';
-  DATA.agentLabel = $('agentLabel').value.trim() || 'CLAUDE';
-  $('chipUser').textContent = DATA.userLabel;
-  $('chipAgent').textContent = DATA.agentLabel;
+  showFooter = !showFooter;
+  $('modelToggle').classList.toggle('open', showFooter);
+  $('modelToggle').setAttribute('aria-pressed', showFooter ? 'true' : 'false');
   render(true);
-  clearTimeout(labelSaveTimer);
-  labelSaveTimer = setTimeout(() => vscodeApi.postMessage({
-    type:'setLabels', userLabel: DATA.userLabel, agentLabel: DATA.agentLabel,
-    showNames: document.body.dataset.names !== 'off',
-  }), 220);
 };
-$('userLabel').oninput = saveLabels;
-$('agentLabel').oninput = saveLabels;
+$('jump').onclick = () => { $('chat').scrollTop = $('chat').scrollHeight; updateRail(); };
 $('search').oninput = () => {
   currentMatch = 0;
   if (!$('search').value.trim()) overrides.clear();
