@@ -82,6 +82,13 @@ test('full pipeline never writes inside ~/.claude', async () => {
   const sessions = await indexAll(cacheFile, undefined, { includePrompts: true });
   assert.strictEqual(sessions.length, 1, 'fixture session indexed');
   assert.strictEqual(sessions[0].cwd, '/tmp/demo');
+  assert.strictEqual(sessions[0].firstMessage, 'hello world');
+  assert.strictEqual(sessions[0].firstMessageRole, 'user');
+  assert.strictEqual(sessions[0].lastMessage, 'hi!');
+  assert.strictEqual(sessions[0].lastMessageRole, 'assistant');
+  assert.strictEqual(sessions[0].messageCount, 2);
+  assert.strictEqual(sessions[0].firstMessageTs, '2026-01-01T10:00:00Z');
+  assert.strictEqual(sessions[0].lastMessageTs, '2026-01-01T10:00:05Z');
 
   const convo = await extractConversation(sessionFile);
   assert.ok(convo.messages.length >= 1, 'conversation extracted');

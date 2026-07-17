@@ -6,8 +6,8 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { fileURLToPath } = require('url');
-const { extractConversation, conversationToText } = require('./conversation');
-const { SEARCH_SVG } = require('./icons');
+const { extractConversation, conversationToText, computeModelRuns } = require('./conversation');
+const { SEARCH_SVG, MODEL_SVG } = require('./icons');
 
 const RENDER_WINDOW = 200; // big sessions: render latest N first, "render all" banner
 
@@ -210,6 +210,7 @@ class ConversationViewer {
     const data = JSON.stringify({
       find,
       messages: convo.messages,
+      runs: computeModelRuns(convo.messages),
       userLabel: cfg.userLabel,
       agentLabel: cfg.agentLabel,
       showNames: cfg.showNames,
@@ -366,6 +367,17 @@ class ConversationViewer {
   mark.current { background:#ffc85a; box-shadow:0 0 0 2px rgba(217,119,87,.45); }
   .more { color:var(--agent-strong); font-size:12px; cursor:pointer; margin-top:6px; display:block; }
   .more:hover { text-decoration:underline; }
+  .mstrip { position:absolute; right:29px; top:16px; bottom:72px; width:16px; border-radius:4px;
+    background:var(--rail-track); display:none; flex-direction:column; overflow:hidden; z-index:5; }
+  .mstrip.open { display:flex; }
+  .mstrip .seg { width:100%; position:relative; display:flex; align-items:center; justify-content:center; }
+  .mstrip .seg + .seg { border-top:1px solid var(--line); }
+  .mstrip .seg:hover { background:var(--btn2); }
+  .mstrip .seg .name { writing-mode:vertical-rl; transform:rotate(180deg); font-size:9px; font-weight:700;
+    letter-spacing:.02em; color:var(--mut); white-space:nowrap; pointer-events:none; }
+  .mstrip .seg.tiny .name { display:none; }
+  .mstrip .seg[data-tip]::after { top:50%; left:auto; right:calc(100% + 8px); bottom:auto;
+    transform:translateY(-50%); }
   .rail { position:absolute; right:6px; top:16px; bottom:72px; width:17px; border-radius:999px;
     background:transparent; cursor:grab; touch-action:none; z-index:5; }
   .rail::before { content:''; position:absolute; left:50%; transform:translateX(-50%); top:0; bottom:0;
@@ -414,6 +426,7 @@ class ConversationViewer {
       <button class="seg${cfg.viewerDensity === 'full' ? ' on' : ''}" data-d="full">Full</button>
     </div>
     <span class="spacer"></span>
+    <button class="ibtn" id="modelToggle" aria-label="Model lane" data-tip="Which model handled what">${MODEL_SVG}</button>
     <button class="ibtn" id="searchToggle" aria-label="Search" data-tip="Search">${SEARCH_SVG}</button>
     <button class="ibtn" id="moreBtn" aria-label="More options" data-tip="More options">⋯</button>
     <div class="moremenu" id="moreMenu">
@@ -440,6 +453,7 @@ class ConversationViewer {
   </div>
   <div class="chatwrap" id="chatwrap">
     <div class="chat" id="chat"></div>
+    <div class="mstrip" id="mstrip" aria-label="Model lane" role="img"></div>
     <div class="rail" id="rail" role="scrollbar" aria-label="Conversation position" aria-orientation="vertical"><div class="rail-fill" id="railFill"></div><div class="rail-thumb" id="railThumb"></div></div>
     <div class="pospill" id="pospill">msg 1 / ${nMsgs}</div>
     <button class="jump" id="jump" title="Jump to last message">↓</button>
@@ -784,6 +798,32 @@ function fmtTs(ts){ if(!ts) return '?'; const d = new Date(ts);
   return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) + ' ' +
          d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}); }
 
+function fmtHM(ts){ if(!ts) return '?'; return new Date(ts).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}); }
+
+function modelLabel(id) {
+  const m = String(id || '').match(/claude-([a-z]+)/i);
+  return m ? m[1][0].toUpperCase() + m[1].slice(1) : (id || 'Unknown');
+}
+
+// Which model handled which stretch of the conversation: a thin neutral
+// strip, divider lines only (no per-model color — a flat list of chips
+// already does that job better). Whole-session and static: computed once
+// server-side (DATA.runs), independent of scroll/filter/window state.
+function renderModelStrip() {
+  const strip = $('mstrip');
+  const runs = DATA.runs || [];
+  const total = runs.reduce((s, r) => s + r.turns, 0) || 1;
+  strip.innerHTML = runs.map(r => {
+    const label = modelLabel(r.model);
+    const range = r.tsStart === r.tsEnd ? fmtHM(r.tsStart) : fmtHM(r.tsStart) + '–' + fmtHM(r.tsEnd);
+    const tip = label + ' · ' + r.turns + ' turn' + (r.turns === 1 ? '' : 's') + ' · ' + range;
+    const pct = Math.max(1.5, (r.turns / total) * 100);
+    const tiny = pct < 8 ? ' tiny' : '';
+    return '<div class="seg' + tiny + '" style="height:' + pct + '%" data-tip="' + escAttr(tip) + '">' +
+      '<span class="name">' + escHtml(label) + '</span></div>';
+  }).join('');
+}
+
 function updateMatches(jump) {
   const query = $('search').value.trim().toLowerCase();
   if (!matches.length) {
@@ -880,6 +920,11 @@ $('searchToggle').onclick = () => {
   $('searchToggle').classList.toggle('open', $('searchbar').classList.contains('open'));
   if ($('searchbar').classList.contains('open')) $('search').focus();
 };
+$('modelToggle').onclick = () => {
+  $('mstrip').classList.toggle('open');
+  $('modelToggle').classList.toggle('open', $('mstrip').classList.contains('open'));
+};
+renderModelStrip();
 $('jump').onclick = () => { $('chat').scrollTop = $('chat').scrollHeight; updateRail(); };
 $('showNames').onchange = e => {
   document.body.dataset.names = e.target.checked ? 'on' : 'off';

@@ -25,7 +25,11 @@ const fakeVscode = {
   TreeItem: class { constructor(label, state) { this.label = label; this.collapsibleState = state; } },
   TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
   ThemeIcon: class {},
-  MarkdownString: class { constructor(s) { this.value = s; } },
+  MarkdownString: class {
+    constructor(s = '') { this.value = s; }
+    appendMarkdown(s) { this.value += s; return this; }
+    appendText(s) { this.value += s; return this; }
+  },
   Uri: { joinPath(...parts) { return { parts }; }, file() { return {}; } },
   StatusBarAlignment: { Right: 2 },
   ViewColumn: { One: 1, Beside: -2 },
@@ -36,7 +40,7 @@ Module._load = function (request, ...rest) {
   return origLoad.call(this, request, ...rest);
 };
 
-const { SessionTreeProvider } = require('../extension');
+const { SessionTreeProvider, pathContains } = require('../extension');
 
 const fakeContext = (state = {}) => ({
   globalState: { get: (k, d) => (k in state ? state[k] : d), update() {} },
@@ -50,6 +54,13 @@ const S = (id, folder, effTs) => ({
   lastTs: effTs,
   effTs,
   mtimeMs: Date.parse(effTs),
+});
+
+test('workspace matching accepts nested session folders but rejects path-prefix siblings', () => {
+  assert.strictEqual(pathContains('/work/project', '/work/project'), true);
+  assert.strictEqual(pathContains('/work/project', '/work/project/packages/app'), true);
+  assert.strictEqual(pathContains('/work/project', '/work/project-copy'), false);
+  assert.strictEqual(pathContains('/work/project', '/work/other'), false);
 });
 
 // Yury's interleaving scenario: alpha newest, beta in between, alpha older.
@@ -140,7 +151,8 @@ test('timeline rows cap long titles and keep folder in the description', () => {
   const item = p.getTreeItem(node);
   assert.match(item.label, /…$/, 'timeline label truncates the visible title');
   assert.strictEqual(item.description, 'claude-sessions-viewer', 'folder remains in the right-side column');
-  assert.match(item.tooltip.value, /\*\*This is a very long generated session title/, 'full title stays in tooltip');
+  assert.match(item.tooltip.value, /Session ID/, 'tooltip starts with session metadata');
+  assert.doesNotMatch(item.tooltip.value, /This is a very long generated session title/, 'tree title is not duplicated in tooltip');
 });
 
 test('view title switches between folder and timeline modes', () => {

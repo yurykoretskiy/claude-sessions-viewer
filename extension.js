@@ -4,10 +4,10 @@ const path = require('path');
 const os = require('os');
 const { indexAll, isAutomationSession } = require('./indexer');
 const { ConversationViewer } = require('./viewer');
-const { SearchViewProvider } = require('./search-view');
 
 const TIMELINE_TITLE_MAX = 48;
 const LIVE_WINDOW_MS = 5 * 60 * 1000;
+const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isLiveSession(session, now = Date.now()) {
   return !!(session && session.mtimeMs && now - session.mtimeMs < LIVE_WINDOW_MS);
@@ -45,6 +45,37 @@ function truncateTitle(title, max = TIMELINE_TITLE_MAX) {
   const value = String(title || '');
   if (value.length <= max) return value;
   return value.slice(0, Math.max(1, max - 1)).trimEnd() + '…';
+}
+
+function tooltipDate(iso) {
+  const date = iso ? new Date(iso) : null;
+  if (!date || Number.isNaN(date.getTime())) return '?';
+  return new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date);
+}
+
+function tooltipDuration(startIso, endIso) {
+  const start = startIso ? Date.parse(startIso) : NaN;
+  const end = endIso ? Date.parse(endIso) : NaN;
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return '?';
+  const minutes = Math.round((end - start) / 60000);
+  if (minutes < 1) return '<1 min';
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
+}
+
+function tooltipText(value, max = 200) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return 'No readable message';
+  return text.length > max ? text.slice(0, max - 1).trimEnd() + '…' : text;
 }
 
 // Two different projects can share a folder basename (e.g. two "backend"
@@ -329,20 +360,6 @@ class SessionTreeProvider {
     return scored[0] ? scored[0].node : null;
   }
 
-  async rename(node) {
-    const s = node.session;
-    const titles = { ...this.context.globalState.get('customTitles', {}) };
-    const value = await vscode.window.showInputBox({
-      prompt: 'Custom session title (leave empty to restore the original)',
-      value: titles[s.id] || s.title || '',
-    });
-    if (value === undefined) return; // cancelled
-    if (value.trim()) titles[s.id] = value.trim();
-    else delete titles[s.id];
-    await this.context.globalState.update('customTitles', titles);
-    this._onDidChangeTreeData.fire();
-  }
-
   allSessions() {
     if (this.treeMode === 'chronological') return this.timeline || [];
     return this.groups.flatMap((g) => g.sessions.map((s) => ({ kind: 'session', session: s, group: g })));
@@ -448,8 +465,8 @@ class SessionTreeProvider {
     const s = element.session;
     const title = this.displayTitle(s);
     // One line, no clutter: age once on the left, then the title gets all
-    // remaining width. Everything else (id, cwd, prompt) lives in the tooltip;
-    // the id is also on the context menu (Copy session id).
+    // remaining width. Session metadata and capped message excerpts live in the tooltip;
+    // The session path is available through the inline copy action.
     // Single em-space padding: VS Code has no per-item indent API, and
     // sessions at the default tree indent read as siblings of the folders.
     const ageTs = s.effTs || s.lastTs;
@@ -468,21 +485,32 @@ class SessionTreeProvider {
     item.description = this.treeMode === 'chronological' && element.group ? element.group.label : '';
     if (live) item.iconPath = vscode.Uri.joinPath(this.context.extensionUri, 'assets', 'session-active.svg');
     item.contextValue = 'session';
-    item.tooltip = new vscode.MarkdownString(
-      [
-        `**${title}**`,
-        '',
-        `id: \`${s.id}\``,
-        `last activity: ${relativeAge(s.effTs || s.lastTs) || '?'} ago (last message ${relativeAge(s.lastTs) || '?'} ago)`,
-        `started in: \`${shortHome(s.cwd || '?')}\``,
-        s.lastPrompt ? `last prompt: ${s.lastPrompt.slice(0, 200)}` : '',
-      ].join('\n')
-    );
+    const firstTs = s.firstMessageTs || s.lastTs;
+    const lastTs = s.lastMessageTs || s.lastTs;
+    const count = Number.isFinite(s.messageCount) ? s.messageCount : '?';
+    const tooltip = new vscode.MarkdownString();
+    const appendLine = (text) => {
+      tooltip.appendText(text);
+      tooltip.appendMarkdown('  \n');
+    };
+    appendLine('Session ID');
+    appendLine(s.id);
+    tooltip.appendMarkdown('\n');
+    appendLine(`First message  ${tooltipDate(firstTs)}`);
+    appendLine(`Last message  ${tooltipDate(lastTs)}`);
+    appendLine(`Duration  ${tooltipDuration(firstTs, lastTs)}  ·  Messages  ${count}`);
+    tooltip.appendMarkdown('\n');
+    appendLine(`First message · ${s.firstMessageRole === 'assistant' ? 'Claude' : 'You'}`);
+    appendLine(tooltipText(s.firstMessage || s.firstPrompt));
+    tooltip.appendMarkdown('\n');
+    appendLine(`Last message · ${s.lastMessageRole === 'assistant' ? 'Claude' : 'You'}`);
+    appendLine(tooltipText(s.lastMessage || s.lastPrompt));
+    item.tooltip = tooltip;
     // Click opens the read-only conversation viewer (POC v3 flow). Resuming
     // stays explicit — the ▶ button in the viewer or the context menu here.
     item.command = {
       command: 'claudeSessions.openConversation',
-      title: 'Open as conversation',
+      title: 'Open in viewer',
       arguments: [element],
     };
     return item;
@@ -494,6 +522,73 @@ function openClaudeTerminal(cwd, name, command) {
   terminal.show();
   terminal.sendText(command, true);
   return terminal;
+}
+
+function pathContains(parent, child) {
+  if (!parent || !child) return false;
+  const relative = path.relative(path.resolve(parent), path.resolve(child));
+  return relative === '' || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative));
+}
+
+function sessionIsInCurrentWorkspace(session) {
+  const folders = vscode.workspace.workspaceFolders || [];
+  return folders.some((folder) => pathContains(folder.uri.fsPath, session.cwd));
+}
+
+async function openClaudeCodePanel(sessionId) {
+  if (!SESSION_ID_RE.test(sessionId || '')) {
+    vscode.window.showErrorMessage('Claude Sessions: refusing to open — session id is not a valid UUID.');
+    return false;
+  }
+  if (vscode.extensions && !vscode.extensions.getExtension('anthropic.claude-code')) {
+    vscode.window.showWarningMessage('Claude Sessions: the official Claude Code extension is not installed.');
+    return false;
+  }
+  try {
+    // The official extension de-duplicates by session id and reveals an
+    // already-open panel instead of creating a second one.
+    await vscode.commands.executeCommand('claude-vscode.primaryEditor.open', sessionId, undefined);
+    return true;
+  } catch (error) {
+    vscode.window.showWarningMessage(
+      `Claude Sessions: could not open the session in Claude Code — ${error.message}`
+    );
+    return false;
+  }
+}
+
+async function openSessionInClaudeCode(session, panelFlagFile) {
+  if (!session || !session.cwd) {
+    vscode.window.showErrorMessage('Claude Sessions: this session has no recorded working folder.');
+    return false;
+  }
+  if (!SESSION_ID_RE.test(session.id || '')) {
+    vscode.window.showErrorMessage('Claude Sessions: refusing to open — session id is not a valid UUID.');
+    return false;
+  }
+  try {
+    if (!fs.statSync(session.cwd).isDirectory()) throw new Error('not a directory');
+  } catch {
+    vscode.window.showErrorMessage(`Claude Sessions: session folder no longer exists: ${session.cwd}`);
+    return false;
+  }
+
+  if (sessionIsInCurrentWorkspace(session)) return openClaudeCodePanel(session.id);
+
+  try {
+    fs.mkdirSync(path.dirname(panelFlagFile), { recursive: true });
+    fs.writeFileSync(
+      panelFlagFile,
+      JSON.stringify({ action: 'resume', folder: session.cwd, sessionId: session.id, ts: Date.now() })
+    );
+  } catch (error) {
+    vscode.window.showErrorMessage(`Claude Sessions: could not prepare the new window — ${error.message}`);
+    return false;
+  }
+  await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(session.cwd), {
+    forceNewWindow: true,
+  });
+  return true;
 }
 
 async function maybeShowFirstRunReviewChoice(context) {
@@ -538,14 +633,6 @@ function activate(context) {
   const viewer = new ConversationViewer(context);
   const panelFlagFile = path.join(context.globalStorageUri.fsPath, 'open-panel-flag.json');
 
-  // Global search panel above the tree; queries run in this host process.
-  const searchProvider = new SearchViewProvider(context, provider, viewer);
-  context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider('claudeSessions.search', searchProvider, {
-      webviewOptions: { retainContextWhenHidden: true },
-    })
-  );
-
   // Always-available entry point: status-bar ✳ reveals the current session.
   const statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90);
   statusItem.text = '$(sparkle)';
@@ -560,7 +647,6 @@ function activate(context) {
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('claudeSessionsViewer.reveal.enabled')) updateRevealStatus();
-      if (e.affectsConfiguration('claudeSessionsViewer.theme')) searchProvider.postTheme();
       if (e.affectsConfiguration('claudeSessionsViewer.promptChildren.enabled')) provider.refresh();
       if (e.affectsConfiguration('claudeSessionsViewer.showAutomationSessions')) provider.refresh();
       if (e.affectsConfiguration('claudeSessionsViewer.timeline.enabled')) {
@@ -579,8 +665,6 @@ function activate(context) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeSessions.refresh', () => provider.refresh()),
-
-    vscode.commands.registerCommand('claudeSessions.searchAll', () => searchProvider.reveal()),
 
     vscode.commands.registerCommand('claudeSessions.openSettings', () =>
       vscode.commands.executeCommand('workbench.action.openSettings', '@ext:yurykoretskiy.claude-sessions-viewer')
@@ -622,7 +706,7 @@ function activate(context) {
       // The id becomes part of a shell command; only ever pass a strict UUID
       // through (ids come from filenames, which an attacker could craft in a
       // shared session pack).
-      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s.id)) {
+      if (!SESSION_ID_RE.test(s.id)) {
         vscode.window.showErrorMessage('Claude Sessions: refusing to resume — session id is not a valid UUID.');
         return;
       }
@@ -630,7 +714,11 @@ function activate(context) {
       openClaudeTerminal(s.cwd, `claude · ${node.group.label}`, `claude --resume ${s.id}`);
     }),
 
-    vscode.commands.registerCommand('claudeSessions.rename', (node) => provider.rename(node)),
+    vscode.commands.registerCommand('claudeSessions.openInClaudeCode', async (node) => {
+      if (!node || node.kind !== 'session') return;
+      provider.rememberSession(node);
+      await openSessionInClaudeCode(node.session, panelFlagFile);
+    }),
 
     // Timeline row -> jump to the session's place in the folder tree.
     vscode.commands.registerCommand('claudeSessions.showInFolders', async (node) => {
@@ -707,24 +795,24 @@ function activate(context) {
       }
     }),
 
-    vscode.commands.registerCommand('claudeSessions.openTranscript', (node) => {
-      vscode.window.showTextDocument(vscode.Uri.file(node.session.file));
-    }),
-
-    vscode.commands.registerCommand('claudeSessions.copySessionId', (node) => {
-      vscode.env.clipboard.writeText(node.session.id);
-      vscode.window.showInformationMessage(`Copied session id ${node.session.id}`);
+    vscode.commands.registerCommand('claudeSessions.copySessionPath', (node) => {
+      vscode.env.clipboard.writeText(node.session.file);
+      vscode.window.showInformationMessage(`Copied session path ${node.session.file}`);
     })
   );
 
-  // If a "new window session here" note was left for this window, consume it
-  // and open the Claude panel (this window is rooted at the requested folder,
-  // so the official extension attaches its session there).
+  // Consume a cross-window request only in the window rooted at its folder.
+  // A resume request carries the exact historical session id; a legacy/new
+  // request starts a fresh official Claude Code conversation.
   try {
     const flag = JSON.parse(fs.readFileSync(panelFlagFile, 'utf8'));
     if (flag.folder === provider.workspaceRoot && Date.now() - flag.ts < 120000) {
       fs.unlinkSync(panelFlagFile);
       setTimeout(async () => {
+        if (flag.action === 'resume' && SESSION_ID_RE.test(flag.sessionId || '')) {
+          await openClaudeCodePanel(flag.sessionId);
+          return;
+        }
         try {
           await vscode.commands.executeCommand('claude-vscode.newConversation');
         } catch {
@@ -757,5 +845,12 @@ function activate(context) {
 
 function deactivate() {}
 
-// SessionTreeProvider is exported for the test suite only.
-module.exports = { activate, deactivate, SessionTreeProvider };
+// Provider and launch helpers are exported for the test suite only.
+module.exports = {
+  activate,
+  deactivate,
+  SessionTreeProvider,
+  pathContains,
+  openClaudeCodePanel,
+  openSessionInClaudeCode,
+};

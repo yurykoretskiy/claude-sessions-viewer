@@ -117,20 +117,19 @@ function snippetAt(text, at, len) {
   };
 }
 
-// Exact-phrase search over the built index. Returns
+// Exact-phrase search over the built index, always case-insensitive. Returns
 // [{file, id, total, snippets: [{r, ts, before, hit, after}]}] — snippets
 // capped per session, total is the uncapped match count.
-function searchIndex(indexed, phrase, opts = {}) {
+function searchIndex(indexed, phrase) {
   const query = String(phrase || '');
   if (query.length < MIN_QUERY_LEN) return [];
-  const matchCase = !!opts.matchCase;
-  const needle = matchCase ? query : query.toLowerCase();
+  const needle = query.toLowerCase();
   const out = [];
   for (const session of indexed) {
     let total = 0;
     const snippets = [];
     for (const e of session.entries) {
-      const hay = matchCase ? e.x : e.x.toLowerCase();
+      const hay = e.x.toLowerCase();
       let at = hay.indexOf(needle);
       let firstInEntry = true;
       while (at !== -1) {

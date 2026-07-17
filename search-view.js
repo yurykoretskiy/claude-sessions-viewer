@@ -101,7 +101,7 @@ class SearchViewProvider {
         return;
       }
       const [indexed, nodes] = await Promise.all([this.freshIndex(), this.sessionNodes()]);
-      const hits = searchIndex(indexed, phrase, { matchCase: !!msg.matchCase });
+      const hits = searchIndex(indexed, phrase);
       const cfg = this.config;
       const groups = [];
       let totalMatches = 0;
@@ -166,9 +166,6 @@ class SearchViewProvider {
   #q { flex:1; min-width:0; background:var(--inp); color:var(--inpfg); border:1px solid var(--line); border-radius:3px;
     padding:3px 7px; font:inherit; outline:none; }
   #q:focus { border-color:var(--focus); }
-  .opts { display:flex; gap:12px; padding:2px 10px 6px; font-size:11px; color:var(--mut); }
-  .opts label { display:flex; align-items:center; gap:4px; cursor:pointer; user-select:none; }
-  .opts input { margin:0; }
   .summary { padding:3px 10px 5px; font-size:11px; color:var(--mut); border-bottom:1px solid var(--line); min-height:15px; }
   .summary b { color:var(--fg); }
   .sess { display:flex; align-items:center; gap:5px; padding:3px 8px; cursor:pointer; white-space:nowrap; overflow:hidden; }
@@ -195,7 +192,6 @@ class SearchViewProvider {
 <body class="${cfg.theme === 'system' ? 'sys' : cfg.theme}">
   <div class="box"><span class="icon">${SEARCH_SVG}</span>
     <input id="q" type="text" placeholder="Search all sessions (exact phrase)" aria-label="Search all sessions"></div>
-  <div class="opts"><label><input type="checkbox" id="matchcase"> match case</label></div>
   <div class="summary" id="summary">Type at least ${MIN_QUERY_LEN} characters to search.</div>
   <div id="results"></div>
 <script nonce="${nonce}">
@@ -207,10 +203,9 @@ let timer = 0;
 
 function send() {
   seq++;
-  vscodeApi.postMessage({ type:'query', seq, q: $('q').value, matchCase: $('matchcase').checked });
+  vscodeApi.postMessage({ type:'query', seq, q: $('q').value });
 }
 $('q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(send, 200); });
-$('matchcase').addEventListener('change', send);
 $('q').addEventListener('keydown', (e) => { if (e.key === 'Escape') { $('q').value = ''; send(); } });
 
 function fmtDate(ts) {

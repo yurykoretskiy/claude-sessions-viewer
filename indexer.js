@@ -1,6 +1,6 @@
 // Streams Claude Code session .jsonl files under ~/.claude/projects and
-// extracts per-session metadata: title, cwd, last activity, and which
-// workspace subfolders the session actually touched (path mentions).
+// extracts compact per-session metadata: title, cwd, activity, and message
+// previews. Full conversations are parsed only when the viewer opens them.
 // Results are cached per (mtime, size) so only changed files are re-read.
 
 const fs = require('fs');
@@ -11,7 +11,7 @@ const readline = require('readline');
 const PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects');
 
 // Bump when the extracted shape changes so stale cache entries re-index.
-const INDEX_VERSION = 4;
+const INDEX_VERSION = 7;
 
 const RE_TIMESTAMP = /"timestamp":"([^"]+)"/;
 const RE_CWD = /"cwd":"([^"]+)"/;
@@ -19,8 +19,13 @@ const RE_ENTRYPOINT = /"entrypoint":"([^"]+)"/;
 const MAX_PROMPTS = 300;
 const PROMPT_CHARS = 200;
 
-function escapeRegExp(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function messageText(content) {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .filter((part) => part && part.type === 'text' && part.text)
+    .map((part) => part.text)
+    .join('\n');
 }
 
 async function indexSessionFile(filePath, options = {}) {
@@ -34,11 +39,18 @@ async function indexSessionFile(filePath, options = {}) {
     lastPrompt: null,
     cwd: null,
     entrypoint: null,
+    firstMessage: null,
+    firstMessageRole: null,
+    firstMessageTs: null,
+    lastMessage: null,
+    lastMessageRole: null,
+    lastMessageTs: null,
+    messageCount: 0,
     lastTs: null,
-    folderMentions: {},
     prompts: [],
   };
-  let mentionRe = null;
+  let previousMessageRole = null;
+  let previousMessageTs = null;
 
   const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
@@ -56,19 +68,6 @@ async function indexSessionFile(filePath, options = {}) {
       const cwdMatch = RE_CWD.exec(line);
       if (cwdMatch) {
         result.cwd = cwdMatch[1];
-        mentionRe = new RegExp(
-          escapeRegExp(result.cwd) + '/([A-Za-z0-9._][A-Za-z0-9._-]*)',
-          'g'
-        );
-      }
-    }
-
-    if (mentionRe && line.length < 2_000_000) {
-      mentionRe.lastIndex = 0;
-      let m;
-      while ((m = mentionRe.exec(line)) !== null) {
-        const seg = m[1];
-        result.folderMentions[seg] = (result.folderMentions[seg] || 0) + 1;
       }
     }
 
@@ -83,21 +82,31 @@ async function indexSessionFile(filePath, options = {}) {
         const obj = JSON.parse(line);
         if (obj.lastPrompt) result.lastPrompt = obj.lastPrompt;
       } catch {}
-    } else if (line.includes('"type":"user"') && line.length < 64 * 1024) {
+    } else if ((line.includes('"type":"user"') || line.includes('"type":"assistant"')) && line.length < 512 * 1024) {
       try {
         const obj = JSON.parse(line);
-        if (obj.type === 'user' && obj.message && !obj.isSidechain && !obj.isMeta) {
-          const c = obj.message.content;
-          let text = null;
-          if (typeof c === 'string') text = c;
-          else if (Array.isArray(c)) {
-            const t = c.find((p) => p.type === 'text' && p.text);
-            if (t) text = t.text;
-          }
+        if ((obj.type === 'user' || obj.type === 'assistant') && obj.message && !obj.isSidechain && !obj.isMeta) {
+          const text = messageText(obj.message.content);
           if (text && !text.startsWith('<')) {
             const clean = text.replace(/\s+/g, ' ').trim().slice(0, PROMPT_CHARS);
-            if (includePrompts && clean && result.prompts.length < MAX_PROMPTS) result.prompts.push(clean);
-            if (!result.firstPrompt) result.firstPrompt = clean.slice(0, 120);
+            const ts = tsMatch ? tsMatch[1] : null;
+            const sameAssistantTurn =
+              obj.type === 'assistant' && previousMessageRole === 'assistant' && previousMessageTs === ts;
+            if (!sameAssistantTurn) result.messageCount++;
+            if (!result.firstMessage) {
+              result.firstMessage = clean;
+              result.firstMessageRole = obj.type;
+              result.firstMessageTs = ts;
+            }
+            result.lastMessage = clean;
+            result.lastMessageRole = obj.type;
+            result.lastMessageTs = ts;
+            previousMessageRole = obj.type;
+            previousMessageTs = ts;
+            if (obj.type === 'user') {
+              if (includePrompts && clean && result.prompts.length < MAX_PROMPTS) result.prompts.push(clean);
+              if (!result.firstPrompt) result.firstPrompt = clean.slice(0, 120);
+            }
           }
         }
       } catch {}
@@ -122,17 +131,17 @@ function saveCache(cacheFile, cache) {
   } catch {}
 }
 
-function listSessionFiles() {
+function listSessionFiles(projectsDir = PROJECTS_DIR) {
   const files = [];
   let projectDirs = [];
   try {
-    projectDirs = fs.readdirSync(PROJECTS_DIR, { withFileTypes: true });
+    projectDirs = fs.readdirSync(projectsDir, { withFileTypes: true });
   } catch {
     return files;
   }
   for (const d of projectDirs) {
     if (!d.isDirectory()) continue;
-    const dir = path.join(PROJECTS_DIR, d.name);
+    const dir = path.join(projectsDir, d.name);
     let entries = [];
     try {
       entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -165,7 +174,7 @@ async function indexAll(cacheFile, onProgress, options = {}) {
   const includePrompts = options.includePrompts !== false;
   const cacheVersion = `${INDEX_VERSION}:${includePrompts ? 'prompts' : 'session'}`;
   const cache = loadCache(cacheFile);
-  const files = listSessionFiles();
+  const files = listSessionFiles(options.projectsDir || PROJECTS_DIR);
   const sessions = [];
   const seen = new Set();
   let dirty = false;

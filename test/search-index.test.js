@@ -61,7 +61,7 @@ test('long messages are capped like the viewer so hits stay verbatim-findable', 
   assert.strictEqual(entries[0].x.length, 8000);
 });
 
-test('exact-phrase search: counts all matches, one snippet per message, case toggle', () => {
+test('exact-phrase search: counts all matches, one snippet per message, always case-insensitive', () => {
   const indexed = [
     {
       file: '/tmp/a.jsonl',
@@ -80,9 +80,6 @@ test('exact-phrase search: counts all matches, one snippet per message, case tog
   assert.strictEqual(results[0].total, 3);
   assert.strictEqual(results[0].snippets.length, 2); // one per matching message
   assert.strictEqual(results[0].snippets[0].hit, 'Hermes board');
-
-  const caseSensitive = searchIndex(indexed, 'Hermes board', { matchCase: true });
-  assert.strictEqual(caseSensitive[0].total, 1);
 
   assert.deepStrictEqual(searchIndex(indexed, 'h'), []); // below min length
 });
