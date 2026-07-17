@@ -2,7 +2,7 @@
   "name": "claude-sessions-viewer",
   "displayName": "Claude Sessions Viewer",
   "description": "Read Claude Code sessions like chat: locate current work, review history, export Markdown. Read-only, local, zero dependencies.",
-  "version": "1.18.9",
+  "version": "1.18.10",
   "publisher": "yurykoretskiy",
   "license": "MIT",
   "engines": {
@@ -281,41 +281,6 @@
             "order": 3,
             "scope": "window",
             "markdownDescription": "How many lines a manually folded message shows as its preview."
-          },
-          "claudeSessionsViewer.messageFooter.enabled": {
-            "type": "boolean",
-            "default": false,
-            "order": 4,
-            "scope": "window",
-            "markdownDescription": "Show a compact copyable footer inside each conversation message."
-          },
-          "claudeSessionsViewer.messageFooter.showAvatar": {
-            "type": "boolean",
-            "default": true,
-            "order": 5,
-            "scope": "window",
-            "markdownDescription": "Show the speaker avatar in message footers when the footer is enabled."
-          },
-          "claudeSessionsViewer.messageFooter.showRole": {
-            "type": "boolean",
-            "default": true,
-            "order": 6,
-            "scope": "window",
-            "markdownDescription": "Show the speaker label in message footers when the footer is enabled."
-          },
-          "claudeSessionsViewer.messageFooter.showModel": {
-            "type": "boolean",
-            "default": true,
-            "order": 7,
-            "scope": "window",
-            "markdownDescription": "Show the Claude model in assistant message footers when available."
-          },
-          "claudeSessionsViewer.messageFooter.showTime": {
-            "type": "boolean",
-            "default": true,
-            "order": 8,
-            "scope": "window",
-            "markdownDescription": "Show the message time in message footers when available."
           }
         }
       },

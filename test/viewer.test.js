@@ -171,42 +171,6 @@ test('generated webview script is valid JavaScript', () => {
   assert.doesNotThrow(() => new vm.Script(script[1]));
 });
 
-test('message footer is opt-in and exposes copy, speaker, model, and time controls', () => {
-  const viewer = new ConversationViewer({});
-  const origGetConfiguration = fakeVscode.workspace.getConfiguration;
-  fakeVscode.workspace.getConfiguration = () => ({
-    get: (key, fallback) => ({
-      'messageFooter.enabled': true,
-      'messageFooter.showAvatar': true,
-      'messageFooter.showRole': true,
-      'messageFooter.showModel': true,
-      'messageFooter.showTime': true,
-    }[key] ?? fallback),
-  });
-  try {
-    const html = viewer.html({
-      session: { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp },
-      convo: {
-        firstTs: '2026-01-01T10:00:00Z',
-        lastTs: '2026-01-01T10:00:05Z',
-        messages: [
-          { role: 'user', text: 'hello', ts: '2026-01-01T10:00:00Z' },
-          { role: 'assistant', text: 'hi', model: 'claude-sonnet-4-5-20250929', ts: '2026-01-01T10:00:05Z' },
-        ],
-      },
-      title: 'T',
-      folder: 'F',
-    });
-    assert.match(html, /"messageFooter":\{"enabled":true,"showAvatar":true,"showRole":true,"showModel":true,"showTime":true\}/);
-    assert.match(html, /function messageFooter\(m, who, indices\)/);
-    assert.match(html, /message-footer-copy/);
-    assert.match(html, /modelLabel\(m\.model\)/);
-    assert.match(html, /type:'copyMessage'/);
-  } finally {
-    fakeVscode.workspace.getConfiguration = origGetConfiguration;
-  }
-});
-
 test('generated HTML uses one viewer mode with manual folding and no density toggle', () => {
   const viewer = new ConversationViewer({});
   const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };

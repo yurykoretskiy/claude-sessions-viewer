@@ -48,13 +48,6 @@ class ConversationViewer {
       showNames,
       liveRefresh: c.get('liveRefresh.enabled', false),
       shortPreviewLines: c.get('shortPreviewLines', 4),
-      messageFooter: {
-        enabled: c.get('messageFooter.enabled', false),
-        showAvatar: c.get('messageFooter.showAvatar', true),
-        showRole: c.get('messageFooter.showRole', true),
-        showModel: c.get('messageFooter.showModel', true),
-        showTime: c.get('messageFooter.showTime', true),
-      },
     };
   }
 
@@ -220,7 +213,6 @@ class ConversationViewer {
       userLabel: cfg.userLabel,
       agentLabel: cfg.agentLabel,
       showNames: cfg.showNames,
-      messageFooter: cfg.messageFooter,
       theme: cfg.theme,
       foldLines: Math.max(1, Math.min(30, Number(cfg.shortPreviewLines) || 4)),
       window: RENDER_WINDOW,
@@ -337,15 +329,6 @@ class ConversationViewer {
   .msg-copy:hover, .msg-copy:focus-visible, .msg-copy.copied { opacity:1; color:var(--fg); background:var(--btn2); outline:none; }
   .msg-copy svg { width:13px; height:13px; }
   .msg-copy .copied-mark { font-size:14px; line-height:1; }
-  .message-footer { display:flex; align-items:center; gap:6px; margin-top:9px; min-height:20px;
-    color:var(--mut); font-size:10.5px; letter-spacing:.01em; }
-  .message-footer-avatar, .message-footer-user { width:15px; height:15px; flex:0 0 15px; object-fit:contain; }
-  .message-footer-user { display:inline-flex; align-items:center; justify-content:center; border:1px solid var(--user-edge);
-    border-radius:50%; color:var(--user-strong); font-size:9px; font-weight:700; }
-  .message-footer-copy { position:static; width:20px; height:20px; flex:0 0 20px; opacity:.72; pointer-events:auto;
-    transform:none; border-radius:5px; }
-  .message-footer-copy:hover, .message-footer-copy:focus-visible, .message-footer-copy.copied { opacity:1; }
-  .message-footer-copy svg { width:12px; height:12px; }
   .who { font-size:11px; color:var(--mut); margin-bottom:3px; letter-spacing:.02em; font-weight:700; text-transform:uppercase; }
   .role-icon { display:inline-flex; align-items:center; justify-content:center; margin-right:4px;
     width:14px; height:14px; font-size:12px; line-height:1; vertical-align:-2px; }
@@ -762,10 +745,7 @@ function render(keepScroll) {
     }).join('<div class="part-sep"></div>');
     const foldedClass = folded ? ' folded' : '';
     const foldInd = '<span class="fold-ind" data-fold="' + g0 + '" title="' + (folded ? 'Unfold' : 'Fold') + '">' + (folded ? '⌄' : '⌃') + '</span>';
-    const lastMessage = msgs[g.indices[g.indices.length - 1]];
-    const copyButton = DATA.messageFooter && DATA.messageFooter.enabled
-      ? messageFooter(lastMessage, who, g.indices)
-      : '<button class="msg-copy" data-copy="' + g.indices.join(',') + '" aria-label="Copy message" title="Copy message">' + MESSAGE_COPY_ICON + '</button>';
+    const copyButton = '<button class="msg-copy" data-copy="' + g.indices.join(',') + '" aria-label="Copy message" title="Copy message">' + MESSAGE_COPY_ICON + '</button>';
     frag.push('<div class="msg ' + g.role + foldedClass + '" data-i="' + g0 + '" data-day="' + (day || '') + '">' + foldInd + '<div class="who"><span class="role-icon">' + icon + '</span>' + escHtml(who) + '</div><div class="bodywrap">' + parts + '</div>' + copyButton + '</div>');
   }
   frag.push('<div class="bottom-spacer" aria-hidden="true"></div>');
@@ -824,23 +804,6 @@ function fmtHM(ts){ if(!ts) return '?'; return new Date(ts).toLocaleTimeString('
 function modelLabel(id) {
   const m = String(id || '').match(/claude-([a-z]+)/i);
   return m ? m[1][0].toUpperCase() + m[1].slice(1) : (id || 'Unknown');
-}
-
-function messageFooter(m, who, indices) {
-  const cfg = DATA.messageFooter || {};
-  const bits = [];
-  if (cfg.showRole !== false) bits.push(escHtml(who));
-  if (cfg.showModel && m.role === 'assistant' && m.model) bits.push(escHtml(modelLabel(m.model)));
-  if (cfg.showTime && m.ts) bits.push(escHtml(fmtHM(m.ts)));
-  const avatar = cfg.showAvatar !== false
-    ? (m.role === 'assistant'
-      ? '<img class="message-footer-avatar" src="' + escAttr(DATA.mascotUri) + '" alt="">'
-      : '<span class="message-footer-user" aria-hidden="true">U</span>')
-    : '';
-  return '<div class="message-footer">' +
-    '<button class="msg-copy message-footer-copy" data-copy="' + indices.join(',') + '" aria-label="Copy message" title="Copy message">' + MESSAGE_COPY_ICON + '</button>' +
-    avatar + (bits.length ? '<span>' + bits.join(' · ') + '</span>' : '') +
-    '</div>';
 }
 
 // Which model handled which stretch of the conversation: a thin neutral

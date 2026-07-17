@@ -148,9 +148,6 @@ session-level browsing.
 - Speaker names, labels, and visibility are controlled from the viewer's `⋯`
   menu and stay with the viewer experience rather than the global Settings
   page.
-- `claudeSessionsViewer.messageFooter.enabled` — optionally show a compact
-  copyable footer inside each message. Its avatar, role, model, and time parts
-  can be toggled independently with the related `messageFooter` settings.
 - `claudeSessionsViewer.promptChildren.enabled` — show prompt/message rows
   under sessions. Off by default.
 - `claudeSessionsViewer.timeline.enabled` — show the experimental flat session
