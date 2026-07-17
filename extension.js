@@ -69,13 +69,23 @@ function tooltipDuration(startIso, endIso) {
   if (minutes < 60) return `${minutes} min`;
   const hours = Math.floor(minutes / 60);
   const remainder = minutes % 60;
-  return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
+  const exact = remainder ? `${hours}h ${remainder}m` : `${hours}h`;
+  if (hours < 24) return exact;
+  return `~${Math.floor(hours / 24)}d (${exact})`;
 }
 
-function tooltipText(value, max = 200) {
-  const text = String(value || '').replace(/\s+/g, ' ').trim();
-  if (!text) return 'No readable message';
-  return text.length > max ? text.slice(0, max - 1).trimEnd() + '…' : text;
+function tooltipMessageLines(session) {
+  const head = String(session.lastMessage || session.lastPrompt || '').replace(/\s+/g, ' ').trim();
+  if (!head) return ['No readable message'];
+  const totalLength = Number(session.lastMessageLength) || head.length;
+  const tail = String(session.lastMessageTail || '').replace(/\s+/g, ' ').trim();
+  if (!tail || totalLength <= head.length) return [head];
+
+  // If the cached head and tail overlap, remove the duplicate section while
+  // retaining the true ending. Long messages show their opening and ending.
+  const overlap = Math.max(0, head.length + tail.length - totalLength);
+  const ending = tail.slice(overlap).trimStart();
+  return ending ? [`${head}…`, `…${ending}`] : [`${head}…`];
 }
 
 // Two different projects can share a folder basename (e.g. two "backend"
@@ -493,18 +503,16 @@ class SessionTreeProvider {
       tooltip.appendText(text);
       tooltip.appendMarkdown('  \n');
     };
+    appendLine(`Started · ${tooltipDate(firstTs)}`);
+    appendLine(`Last message · ${s.lastMessageRole === 'assistant' ? 'Claude' : 'You'} · ${tooltipDate(lastTs)}`);
+    tooltip.appendMarkdown('\n');
+    for (const line of tooltipMessageLines(s)) appendLine(line);
+    tooltip.appendMarkdown('\n');
+    appendLine(`Duration      ${tooltipDuration(firstTs, lastTs)}`);
+    appendLine(`Messages      ${count}`);
+    tooltip.appendMarkdown('\n');
     appendLine('Session ID');
     appendLine(s.id);
-    tooltip.appendMarkdown('\n');
-    appendLine(`First message  ${tooltipDate(firstTs)}`);
-    appendLine(`Last message  ${tooltipDate(lastTs)}`);
-    appendLine(`Duration  ${tooltipDuration(firstTs, lastTs)}  ·  Messages  ${count}`);
-    tooltip.appendMarkdown('\n');
-    appendLine(`First message · ${s.firstMessageRole === 'assistant' ? 'Claude' : 'You'}`);
-    appendLine(tooltipText(s.firstMessage || s.firstPrompt));
-    tooltip.appendMarkdown('\n');
-    appendLine(`Last message · ${s.lastMessageRole === 'assistant' ? 'Claude' : 'You'}`);
-    appendLine(tooltipText(s.lastMessage || s.lastPrompt));
     item.tooltip = tooltip;
     // Click opens the read-only conversation viewer (POC v3 flow). Resuming
     // stays explicit — the ▶ button in the viewer or the context menu here.

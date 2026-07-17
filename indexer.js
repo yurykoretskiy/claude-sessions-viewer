@@ -11,16 +11,31 @@ const readline = require('readline');
 const PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects');
 
 // Bump when the extracted shape changes so stale cache entries re-index.
-const INDEX_VERSION = 7;
+const INDEX_VERSION = 9;
 
 const RE_TIMESTAMP = /"timestamp":"([^"]+)"/;
 const RE_CWD = /"cwd":"([^"]+)"/;
 const RE_ENTRYPOINT = /"entrypoint":"([^"]+)"/;
 const MAX_PROMPTS = 300;
 const PROMPT_CHARS = 200;
+const MESSAGE_HEAD_CHARS = 180;
+const MESSAGE_TAIL_CHARS = 120;
+// Claude can put an image and its text in one large JSONL record. Keep the
+// parser bounded per line, but do not silently drop ordinary readable turns.
+const MAX_MESSAGE_LINE = 4 * 1024 * 1024;
 
 function messageText(content) {
-  if (typeof content === 'string') return content;
+  if (typeof content === 'string') {
+    const source = content;
+    const named = source.match(/<command-name>\s*([^<]+?)\s*<\/command-name>/);
+    if (named && named[1].trim()) return named[1].trim();
+    const message = source.match(/<command-message>\s*([^<]+?)\s*<\/command-message>/);
+    if (message && message[1].trim()) {
+      const value = message[1].trim();
+      return value.startsWith('/') ? value : `/${value}`;
+    }
+    return content.startsWith('<') ? '' : content;
+  }
   if (!Array.isArray(content)) return '';
   return content
     .filter((part) => part && part.type === 'text' && part.text)
@@ -43,6 +58,8 @@ async function indexSessionFile(filePath, options = {}) {
     firstMessageRole: null,
     firstMessageTs: null,
     lastMessage: null,
+    lastMessageTail: null,
+    lastMessageLength: 0,
     lastMessageRole: null,
     lastMessageTs: null,
     messageCount: 0,
@@ -82,13 +99,14 @@ async function indexSessionFile(filePath, options = {}) {
         const obj = JSON.parse(line);
         if (obj.lastPrompt) result.lastPrompt = obj.lastPrompt;
       } catch {}
-    } else if ((line.includes('"type":"user"') || line.includes('"type":"assistant"')) && line.length < 512 * 1024) {
+    } else if ((line.includes('"type":"user"') || line.includes('"type":"assistant"')) && line.length < MAX_MESSAGE_LINE) {
       try {
         const obj = JSON.parse(line);
         if ((obj.type === 'user' || obj.type === 'assistant') && obj.message && !obj.isSidechain && !obj.isMeta) {
           const text = messageText(obj.message.content);
-          if (text && !text.startsWith('<')) {
-            const clean = text.replace(/\s+/g, ' ').trim().slice(0, PROMPT_CHARS);
+          if (text) {
+            const normalized = text.replace(/\s+/g, ' ').trim();
+            const clean = normalized.slice(0, PROMPT_CHARS);
             const ts = tsMatch ? tsMatch[1] : null;
             const sameAssistantTurn =
               obj.type === 'assistant' && previousMessageRole === 'assistant' && previousMessageTs === ts;
@@ -98,7 +116,11 @@ async function indexSessionFile(filePath, options = {}) {
               result.firstMessageRole = obj.type;
               result.firstMessageTs = ts;
             }
-            result.lastMessage = clean;
+            result.lastMessage = normalized.slice(0, MESSAGE_HEAD_CHARS);
+            result.lastMessageTail = normalized.length > MESSAGE_HEAD_CHARS
+              ? normalized.slice(-MESSAGE_TAIL_CHARS)
+              : null;
+            result.lastMessageLength = normalized.length;
             result.lastMessageRole = obj.type;
             result.lastMessageTs = ts;
             previousMessageRole = obj.type;

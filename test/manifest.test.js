@@ -18,6 +18,26 @@ test('tree exposes exactly four explicit session-row actions', () => {
   ]);
 });
 
+test('tree action glyphs use padded local assets so the current shapes read lighter', () => {
+  const commands = manifest.contributes.commands;
+  for (const commandId of [
+    'claudeSessions.openConversation',
+    'claudeSessions.resume',
+    'claudeSessions.copySessionPath',
+  ]) {
+    const command = commands.find((item) => item.command === commandId);
+    assert.match(command.icon.light, /^assets\/tree-/);
+    assert.match(command.icon.dark, /^assets\/tree-/);
+  }
+});
+
+test('the prominent mascot is limited to the Activity Bar and reveal action', () => {
+  assert.strictEqual(manifest.contributes.viewsContainers.activitybar[0].icon, 'assets/mascot-prominent.png');
+  const reveal = manifest.contributes.commands.find((item) => item.command === 'claudeSessions.revealCurrent');
+  assert.strictEqual(reveal.icon.light, 'assets/mascot-prominent.png');
+  assert.strictEqual(reveal.icon.dark, 'assets/mascot-prominent.png');
+});
+
 test('Claude Code action uses the official Claude logo asset', () => {
   const command = manifest.contributes.commands.find(
     (item) => item.command === 'claudeSessions.openInClaudeCode'
@@ -30,6 +50,8 @@ test('Claude Code action uses the official Claude logo asset', () => {
   const darkLogo = fs.readFileSync(path.join(__dirname, '..', command.icon.dark), 'utf8');
   assert.match(lightLogo, /fill="#424242"/);
   assert.match(darkLogo, /fill="#c5c5c5"/);
+  assert.match(lightLogo, /viewBox="-3 -3 30 30"/);
+  assert.match(darkLogo, /viewBox="-3 -3 30 30"/);
   assert.doesNotMatch(lightLogo, /#D97757|currentColor/i);
   assert.doesNotMatch(darkLogo, /#D97757|currentColor/i);
 });

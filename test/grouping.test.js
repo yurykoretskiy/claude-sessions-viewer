@@ -151,8 +151,32 @@ test('timeline rows cap long titles and keep folder in the description', () => {
   const item = p.getTreeItem(node);
   assert.match(item.label, /…$/, 'timeline label truncates the visible title');
   assert.strictEqual(item.description, 'claude-sessions-viewer', 'folder remains in the right-side column');
-  assert.match(item.tooltip.value, /Session ID/, 'tooltip starts with session metadata');
+  assert.match(item.tooltip.value, /Session ID/, 'tooltip includes the session id');
   assert.doesNotMatch(item.tooltip.value, /This is a very long generated session title/, 'tree title is not duplicated in tooltip');
+});
+
+test('session hover mirrors chronology and ends with compact metadata', () => {
+  const p = new SessionTreeProvider(fakeContext());
+  p.treeMode = 'chronological';
+  const session = {
+    ...S('hover-layout', 'claude-sessions-viewer', '2026-07-17T10:44:00.000Z'),
+    firstMessageTs: '2026-07-14T07:36:00.000Z',
+    lastMessageTs: '2026-07-17T10:44:00.000Z',
+    lastMessageRole: 'assistant',
+    lastMessage: 'Saved both lessons to memory for this project.',
+    lastMessageTail: "say the word when you're ready and I'll implement it.",
+    lastMessageLength: 500,
+    messageCount: 142,
+  };
+  const item = p.getTreeItem(p.buildTimeline([session], null)[0]);
+  const text = item.tooltip.value;
+
+  assert.ok(text.indexOf('Started ·') < text.indexOf('Last message · Claude ·'));
+  assert.ok(text.indexOf('Last message · Claude ·') < text.indexOf('Saved both lessons'));
+  assert.ok(text.indexOf('Saved both lessons') < text.indexOf('Duration      ~3d (75h 8m)'));
+  assert.ok(text.indexOf('Messages      142') < text.indexOf('Session ID'));
+  assert.match(text, /…say the word when you're ready and I'll implement it\./);
+  assert.doesNotMatch(text, /First message/);
 });
 
 test('view title switches between folder and timeline modes', () => {

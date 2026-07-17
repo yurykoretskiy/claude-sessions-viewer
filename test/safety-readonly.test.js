@@ -19,6 +19,7 @@ process.env.HOME = FIXTURE_HOME;
 process.env.USERPROFILE = FIXTURE_HOME; // windows CI
 
 const SESSION_ID = '11111111-2222-3333-4444-555555555555';
+const LAST_TEXT = `Summary ${'middle '.repeat(40)}final state`;
 const projDir = path.join(FIXTURE_HOME, '.claude', 'projects', '-tmp-demo');
 fs.mkdirSync(projDir, { recursive: true });
 const sessionFile = path.join(projDir, `${SESSION_ID}.jsonl`);
@@ -26,7 +27,8 @@ fs.writeFileSync(
   sessionFile,
   [
     JSON.stringify({ type: 'user', cwd: '/tmp/demo', timestamp: '2026-01-01T10:00:00Z', message: { content: 'hello world' } }),
-    JSON.stringify({ type: 'assistant', timestamp: '2026-01-01T10:00:05Z', message: { content: [{ type: 'text', text: 'hi!' }] } }),
+    JSON.stringify({ type: 'user', timestamp: '2026-01-01T10:00:03Z', message: { content: '<command-message>model</command-message>\n<command-name>/model</command-name>' } }),
+    JSON.stringify({ type: 'assistant', timestamp: '2026-01-01T10:00:05Z', message: { content: [{ type: 'text', text: LAST_TEXT }] } }),
     JSON.stringify({ aiTitle: 'Demo session', 'ai-title': true }),
   ].join('\n') + '\n'
 );
@@ -84,9 +86,11 @@ test('full pipeline never writes inside ~/.claude', async () => {
   assert.strictEqual(sessions[0].cwd, '/tmp/demo');
   assert.strictEqual(sessions[0].firstMessage, 'hello world');
   assert.strictEqual(sessions[0].firstMessageRole, 'user');
-  assert.strictEqual(sessions[0].lastMessage, 'hi!');
+  assert.strictEqual(sessions[0].lastMessage, LAST_TEXT.slice(0, 180));
+  assert.strictEqual(sessions[0].lastMessageTail, LAST_TEXT.slice(-120));
+  assert.strictEqual(sessions[0].lastMessageLength, LAST_TEXT.length);
   assert.strictEqual(sessions[0].lastMessageRole, 'assistant');
-  assert.strictEqual(sessions[0].messageCount, 2);
+  assert.strictEqual(sessions[0].messageCount, 3);
   assert.strictEqual(sessions[0].firstMessageTs, '2026-01-01T10:00:00Z');
   assert.strictEqual(sessions[0].lastMessageTs, '2026-01-01T10:00:05Z');
 

@@ -22,6 +22,11 @@ function fmt(ts) {
     ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 }
 
+function cleanLabel(value, fallback) {
+  const label = String(value == null ? '' : value).trim().slice(0, 40);
+  return label || fallback;
+}
+
 class ConversationViewer {
   constructor(context) {
     this.context = context;
@@ -31,13 +36,25 @@ class ConversationViewer {
 
   get config() {
     const c = vscode.workspace.getConfiguration('claudeSessionsViewer');
+    const state = this.context && this.context.globalState;
+    const stored = state && typeof state.get === 'function' ? state.get('viewerLabels') : null;
+    const userLabel = cleanLabel(stored && stored.userLabel !== undefined ? stored.userLabel : c.get('userLabel', 'USER'), 'USER');
+    const agentLabel = cleanLabel(stored && stored.agentLabel !== undefined ? stored.agentLabel : c.get('agentLabel', 'CLAUDE'), 'CLAUDE');
+    const showNames = stored && stored.showNames !== undefined ? !!stored.showNames : c.get('showNames', true);
     return {
       theme: c.get('theme', 'system'),
-      userLabel: c.get('userLabel', 'USER'),
-      agentLabel: c.get('agentLabel', 'CLAUDE'),
-      showNames: c.get('showNames', true),
+      userLabel,
+      agentLabel,
+      showNames,
       liveRefresh: c.get('liveRefresh.enabled', false),
       shortPreviewLines: c.get('shortPreviewLines', 4),
+      messageFooter: {
+        enabled: c.get('messageFooter.enabled', false),
+        showAvatar: c.get('messageFooter.showAvatar', true),
+        showRole: c.get('messageFooter.showRole', true),
+        showModel: c.get('messageFooter.showModel', true),
+        showTime: c.get('messageFooter.showTime', true),
+      },
     };
   }
 
@@ -124,6 +141,29 @@ class ConversationViewer {
           `Copied entire conversation (${convo.messages.filter((m) => m.role !== 'tool').length} messages)`
         );
         break;
+      case 'copyMessage': {
+        const indices = Array.isArray(msg.indices)
+          ? msg.indices.filter((i) => Number.isInteger(i) && i >= 0 && i < convo.messages.length)
+          : [];
+        const text = indices
+          .map((i) => convo.messages[i])
+          .filter((m) => m && m.role !== 'tool' && m.text)
+          .map((m) => m.text)
+          .join('\n\n');
+        if (text) await vscode.env.clipboard.writeText(text);
+        break;
+      }
+      case 'setLabels': {
+        const state = this.context && this.context.globalState;
+        if (state && typeof state.update === 'function') {
+          await state.update('viewerLabels', {
+            userLabel: cleanLabel(msg.userLabel, 'USER'),
+            agentLabel: cleanLabel(msg.agentLabel, 'CLAUDE'),
+            showNames: !!msg.showNames,
+          });
+        }
+        break;
+      }
       case 'openLink': {
         const href = String(msg.href || '').trim();
         if (!href) break;
@@ -161,17 +201,6 @@ class ConversationViewer {
         await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(file));
         break;
       }
-      case 'setConfig': {
-        const c = vscode.workspace.getConfiguration('claudeSessionsViewer');
-        if (msg.theme) await c.update('theme', msg.theme, vscode.ConfigurationTarget.Global);
-        if (msg.userLabel !== undefined)
-          await c.update('userLabel', msg.userLabel || 'USER', vscode.ConfigurationTarget.Global);
-        if (msg.agentLabel !== undefined)
-          await c.update('agentLabel', msg.agentLabel || 'CLAUDE', vscode.ConfigurationTarget.Global);
-        if (msg.showNames !== undefined)
-          await c.update('showNames', !!msg.showNames, vscode.ConfigurationTarget.Global);
-        break;
-      }
     }
   }
 
@@ -191,6 +220,7 @@ class ConversationViewer {
       userLabel: cfg.userLabel,
       agentLabel: cfg.agentLabel,
       showNames: cfg.showNames,
+      messageFooter: cfg.messageFooter,
       theme: cfg.theme,
       foldLines: Math.max(1, Math.min(30, Number(cfg.shortPreviewLines) || 4)),
       window: RENDER_WINDOW,
@@ -199,6 +229,7 @@ class ConversationViewer {
       cwd: session.cwd,
       mascotUri,
     }).replace(/</g, '\\u003c');
+    const messageCopyIcon = JSON.stringify(COPY_SVG).replace(/</g, '\\u003c');
     const nMsgs = convo.messages.filter((m) => m.role !== 'tool').length;
 
     return `<!DOCTYPE html>
@@ -258,15 +289,13 @@ class ConversationViewer {
   .seg:last-child { border-right:none; }
   .seg.on { background:var(--btn2); color:var(--fg); }
   .spacer { flex:1 1 auto; }
-  .settingsmenu { position:absolute; top:100%; left:14px; margin-top:6px; background:var(--panel); border:1px solid var(--line);
+  .namesmenu { position:absolute; top:100%; left:14px; margin-top:6px; background:var(--panel); border:1px solid var(--line);
     border-radius:10px; padding:8px; font-size:12px; z-index:20; display:none; width:250px;
     box-shadow:0 8px 28px rgba(0,0,0,.16); }
-  .settingsmenu.open { display:block; }
+  .namesmenu.open { display:block; }
   .settings-title { color:var(--mut); font-size:11px; text-transform:uppercase; letter-spacing:.04em; padding:4px 8px 2px; }
   .settings-row { display:flex; align-items:center; gap:8px; margin:6px 8px; }
   .settings-row .lbl { color:var(--mut); width:56px; flex-shrink:0; }
-  .settings-row .opt { border:1px solid var(--line); border-radius:9px; padding:0 9px; cursor:pointer; color:var(--mut); }
-  .settings-row .opt.on { border-color:var(--agent-strong); color:var(--agent-strong); }
   .settings-row input[type=text] { background:var(--bg); border:1px solid var(--line); color:var(--fg);
     border-radius:6px; padding:4px 7px; min-width:0; flex:1; font-size:12px; }
   .searchbar { display:none; grid-template-columns:1fr auto auto auto auto; align-items:center; gap:7px;
@@ -299,6 +328,24 @@ class ConversationViewer {
   .fold-ind:hover { opacity:1; background:var(--btn2); color:var(--fg); }
   .msg.user { margin-left:auto; background:var(--user-bub); border-right:3px solid var(--user-edge); border-bottom-right-radius:4px; }
   .msg.assistant { margin-right:auto; background:var(--agent-bub); border-left:3px solid var(--agent-edge); border-bottom-left-radius:4px; }
+  .msg-copy { position:absolute; bottom:-8px; width:22px; height:22px; padding:0; display:flex; align-items:center; justify-content:center;
+    border:1px solid var(--line); border-radius:6px; background:var(--panel); color:var(--mut); cursor:pointer;
+    opacity:0; pointer-events:none; transform:translateY(2px); transition:opacity .1s ease, transform .1s ease, color .1s ease; z-index:3; }
+  .msg.assistant .msg-copy { left:6px; }
+  .msg.user .msg-copy { right:6px; }
+  .msg:hover .msg-copy, .msg:focus-within .msg-copy { opacity:.78; pointer-events:auto; transform:translateY(0); }
+  .msg-copy:hover, .msg-copy:focus-visible, .msg-copy.copied { opacity:1; color:var(--fg); background:var(--btn2); outline:none; }
+  .msg-copy svg { width:13px; height:13px; }
+  .msg-copy .copied-mark { font-size:14px; line-height:1; }
+  .message-footer { display:flex; align-items:center; gap:6px; margin-top:9px; min-height:20px;
+    color:var(--mut); font-size:10.5px; letter-spacing:.01em; }
+  .message-footer-avatar, .message-footer-user { width:15px; height:15px; flex:0 0 15px; object-fit:contain; }
+  .message-footer-user { display:inline-flex; align-items:center; justify-content:center; border:1px solid var(--user-edge);
+    border-radius:50%; color:var(--user-strong); font-size:9px; font-weight:700; }
+  .message-footer-copy { position:static; width:20px; height:20px; flex:0 0 20px; opacity:.72; pointer-events:auto;
+    transform:none; border-radius:5px; }
+  .message-footer-copy:hover, .message-footer-copy:focus-visible, .message-footer-copy.copied { opacity:1; }
+  .message-footer-copy svg { width:12px; height:12px; }
   .who { font-size:11px; color:var(--mut); margin-bottom:3px; letter-spacing:.02em; font-weight:700; text-transform:uppercase; }
   .role-icon { display:inline-flex; align-items:center; justify-content:center; margin-right:4px;
     width:14px; height:14px; font-size:12px; line-height:1; vertical-align:-2px; }
@@ -390,14 +437,12 @@ class ConversationViewer {
     <div class="meta" id="meta">${esc(folder)} · ${nMsgs} messages · ${esc(session.id)} · ${fmt(convo.firstTs)} → ${fmt(convo.lastTs)}</div>
   </div>
   <div class="controls">
-    <button class="ibtn" id="settingsBtn" aria-label="Viewer settings" data-tip="Viewer settings">⋯</button>
-    <div class="settingsmenu" id="settingsMenu">
-      <div class="settings-title">Labels &amp; theme</div>
+    <button class="ibtn" id="namesBtn" aria-label="Speaker names" data-tip="Speaker names">⋯</button>
+    <div class="namesmenu" id="namesMenu">
+      <div class="settings-title">Speaker names</div>
       <div class="settings-row"><label><input type="checkbox" id="showNames"${cfg.showNames ? ' checked' : ''}> Show names</label></div>
-      <div class="settings-row"><span class="lbl">You</span><input type="text" id="userLabel"></div>
-      <div class="settings-row"><span class="lbl">Agent</span><input type="text" id="agentLabel"></div>
-      <div class="settings-row"><span class="lbl">Theme</span>
-        <span class="opt" data-th="system">System</span><span class="opt" data-th="light">Light</span><span class="opt" data-th="dark">Dark</span></div>
+      <div class="settings-row"><span class="lbl">You</span><input type="text" id="userLabel" maxlength="40"></div>
+      <div class="settings-row"><span class="lbl">Agent</span><input type="text" id="agentLabel" maxlength="40"></div>
     </div>
     <div class="segmented" id="filterSeg">
       <button class="seg on" data-f="all">All</button>
@@ -428,6 +473,7 @@ class ConversationViewer {
 <script nonce="${nonce}">
 const vscodeApi = acquireVsCodeApi();
 const DATA = ${data};
+const MESSAGE_COPY_ICON = ${messageCopyIcon};
 // Folded previews are clamped by CSS; rendering huge bodies behind the clamp
 // is wasted work, so cap the source text generously relative to the preview.
 const FOLDED_RENDER_CAP = Math.max(1200, (DATA.foldLines || 4) * 160);
@@ -716,7 +762,11 @@ function render(keepScroll) {
     }).join('<div class="part-sep"></div>');
     const foldedClass = folded ? ' folded' : '';
     const foldInd = '<span class="fold-ind" data-fold="' + g0 + '" title="' + (folded ? 'Unfold' : 'Fold') + '">' + (folded ? '⌄' : '⌃') + '</span>';
-    frag.push('<div class="msg ' + g.role + foldedClass + '" data-i="' + g0 + '" data-day="' + (day || '') + '">' + foldInd + '<div class="who"><span class="role-icon">' + icon + '</span>' + escHtml(who) + '</div><div class="bodywrap">' + parts + '</div></div>');
+    const lastMessage = msgs[g.indices[g.indices.length - 1]];
+    const copyButton = DATA.messageFooter && DATA.messageFooter.enabled
+      ? messageFooter(lastMessage, who, g.indices)
+      : '<button class="msg-copy" data-copy="' + g.indices.join(',') + '" aria-label="Copy message" title="Copy message">' + MESSAGE_COPY_ICON + '</button>';
+    frag.push('<div class="msg ' + g.role + foldedClass + '" data-i="' + g0 + '" data-day="' + (day || '') + '">' + foldInd + '<div class="who"><span class="role-icon">' + icon + '</span>' + escHtml(who) + '</div><div class="bodywrap">' + parts + '</div>' + copyButton + '</div>');
   }
   frag.push('<div class="bottom-spacer" aria-hidden="true"></div>');
   chat.insertAdjacentHTML('beforeend', frag.join(''));
@@ -726,6 +776,22 @@ function render(keepScroll) {
     e.stopPropagation();
     const code = btn.closest('pre').querySelector('code');
     if (code) navigator.clipboard.writeText(code.textContent).catch(() => {});
+  });
+  chat.querySelectorAll('.msg-copy').forEach(btn => btn.onclick = (e) => {
+    e.stopPropagation();
+    const indices = String(btn.dataset.copy || '').split(',').map(Number).filter(Number.isInteger);
+    vscodeApi.postMessage({ type:'copyMessage', indices });
+    btn.classList.add('copied');
+    btn.innerHTML = '<span class="copied-mark" aria-hidden="true">✓</span>';
+    btn.title = 'Copied';
+    btn.setAttribute('aria-label', 'Copied');
+    setTimeout(() => {
+      if (!btn.isConnected) return;
+      btn.classList.remove('copied');
+      btn.innerHTML = MESSAGE_COPY_ICON;
+      btn.title = 'Copy message';
+      btn.setAttribute('aria-label', 'Copy message');
+    }, 1400);
   });
   // Every bubble folds/unfolds individually, in both modes: the corner
   // chevron always toggles; a folded bubble also unfolds on click anywhere;
@@ -738,7 +804,7 @@ function render(keepScroll) {
   chat.querySelectorAll('.msg').forEach(el => {
     const i = +el.dataset.i;
     el.onclick = (e) => {
-      if (e.target.closest('a[data-href], .attach, .copy-code')) return;
+      if (e.target.closest('a[data-href], .attach, .copy-code, .msg-copy')) return;
       if (el.classList.contains('folded')) { toggleFold(i); render(true); }
       else if (e.target.closest('.who')) { toggleFold(i); render(true); }
     };
@@ -758,6 +824,23 @@ function fmtHM(ts){ if(!ts) return '?'; return new Date(ts).toLocaleTimeString('
 function modelLabel(id) {
   const m = String(id || '').match(/claude-([a-z]+)/i);
   return m ? m[1][0].toUpperCase() + m[1].slice(1) : (id || 'Unknown');
+}
+
+function messageFooter(m, who, indices) {
+  const cfg = DATA.messageFooter || {};
+  const bits = [];
+  if (cfg.showRole !== false) bits.push(escHtml(who));
+  if (cfg.showModel && m.role === 'assistant' && m.model) bits.push(escHtml(modelLabel(m.model)));
+  if (cfg.showTime && m.ts) bits.push(escHtml(fmtHM(m.ts)));
+  const avatar = cfg.showAvatar !== false
+    ? (m.role === 'assistant'
+      ? '<img class="message-footer-avatar" src="' + escAttr(DATA.mascotUri) + '" alt="">'
+      : '<span class="message-footer-user" aria-hidden="true">U</span>')
+    : '';
+  return '<div class="message-footer">' +
+    '<button class="msg-copy message-footer-copy" data-copy="' + indices.join(',') + '" aria-label="Copy message" title="Copy message">' + MESSAGE_COPY_ICON + '</button>' +
+    avatar + (bits.length ? '<span>' + bits.join(' · ') + '</span>' : '') +
+    '</div>';
 }
 
 // Which model handled which stretch of the conversation: a thin neutral
@@ -861,11 +944,11 @@ window.addEventListener('message', e => {
 
 $('resume').onclick = () => vscodeApi.postMessage({ type:'resume' });
 $('copyConversation').onclick = () => vscodeApi.postMessage({ type:'copy' });
-$('settingsBtn').onclick = () => $('settingsMenu').classList.toggle('open');
+$('namesBtn').onclick = (e) => { e.stopPropagation(); $('namesMenu').classList.toggle('open'); };
 document.addEventListener('click', e => {
-  if (!$('settingsMenu').classList.contains('open')) return;
-  if ($('settingsBtn') === e.target || $('settingsMenu').contains(e.target)) return;
-  $('settingsMenu').classList.remove('open');
+  if (!$('namesMenu').classList.contains('open')) return;
+  if ($('namesMenu').contains(e.target)) return;
+  $('namesMenu').classList.remove('open');
 });
 $('searchToggle').onclick = () => {
   $('searchbar').classList.toggle('open');
@@ -880,21 +963,25 @@ renderModelStrip();
 $('jump').onclick = () => { $('chat').scrollTop = $('chat').scrollHeight; updateRail(); };
 $('showNames').onchange = e => {
   document.body.dataset.names = e.target.checked ? 'on' : 'off';
-  vscodeApi.postMessage({ type:'setConfig', showNames: e.target.checked });
+  vscodeApi.postMessage({ type:'setLabels', userLabel: DATA.userLabel, agentLabel: DATA.agentLabel, showNames: e.target.checked });
 };
 $('userLabel').value = DATA.userLabel;
 $('agentLabel').value = DATA.agentLabel;
-$('userLabel').oninput = () => { render(true); vscodeApi.postMessage({ type:'setConfig', userLabel: $('userLabel').value }); };
-$('agentLabel').oninput = () => { render(true); vscodeApi.postMessage({ type:'setConfig', agentLabel: $('agentLabel').value }); };
-document.querySelectorAll('[data-th]').forEach(b => {
-  if (b.dataset.th === DATA.theme) b.classList.add('on');
-  b.onclick = () => {
-    document.querySelectorAll('[data-th]').forEach(x => x.classList.remove('on'));
-    b.classList.add('on');
-    document.body.className = b.dataset.th === 'system' ? 'sys' : b.dataset.th;
-    vscodeApi.postMessage({ type:'setConfig', theme: b.dataset.th });
-  };
-});
+let labelSaveTimer = 0;
+const saveLabels = () => {
+  DATA.userLabel = $('userLabel').value.trim() || 'USER';
+  DATA.agentLabel = $('agentLabel').value.trim() || 'CLAUDE';
+  $('chipUser').textContent = DATA.userLabel;
+  $('chipAgent').textContent = DATA.agentLabel;
+  render(true);
+  clearTimeout(labelSaveTimer);
+  labelSaveTimer = setTimeout(() => vscodeApi.postMessage({
+    type:'setLabels', userLabel: DATA.userLabel, agentLabel: DATA.agentLabel,
+    showNames: document.body.dataset.names !== 'off',
+  }), 220);
+};
+$('userLabel').oninput = saveLabels;
+$('agentLabel').oninput = saveLabels;
 $('search').oninput = () => {
   currentMatch = 0;
   if (!$('search').value.trim()) overrides.clear();

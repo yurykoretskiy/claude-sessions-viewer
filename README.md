@@ -145,12 +145,12 @@ session-level browsing.
   for tree-only reveal.
 - `claudeSessionsViewer.liveRefresh.enabled` — keep an opened viewer updated
   while the transcript changes. Off by default.
-- `claudeSessionsViewer.userLabel` — label shown on your bubbles and in
-  copy/export output.
-- `claudeSessionsViewer.agentLabel` — label shown on assistant bubbles and in
-  copy/export output. Defaults to `CLAUDE`.
-- `claudeSessionsViewer.showNames` — show speaker names inside bubbles. On by
-  default.
+- Speaker names, labels, and visibility are controlled from the viewer's `⋯`
+  menu and stay with the viewer experience rather than the global Settings
+  page.
+- `claudeSessionsViewer.messageFooter.enabled` — optionally show a compact
+  copyable footer inside each message. Its avatar, role, model, and time parts
+  can be toggled independently with the related `messageFooter` settings.
 - `claudeSessionsViewer.promptChildren.enabled` — show prompt/message rows
   under sessions. Off by default.
 - `claudeSessionsViewer.timeline.enabled` — show the experimental flat session

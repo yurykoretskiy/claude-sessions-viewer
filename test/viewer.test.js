@@ -15,6 +15,7 @@ let terminalsCreated = 0;
 let lastError = null;
 let lastOpenedExternal = null;
 let lastCommand = null;
+let lastClipboard = null;
 
 const fakeVscode = {
   window: {
@@ -37,7 +38,7 @@ const fakeVscode = {
   workspace: { getConfiguration: () => ({ get: (k, d) => d }) },
   ConfigurationTarget: { Global: 1 },
   Uri: { joinPath() { return {}; }, file(fsPath) { return { fsPath }; }, parse(value) { return { value }; } },
-  env: { clipboard: { writeText() {} }, openExternal(uri) { lastOpenedExternal = uri; } },
+  env: { clipboard: { writeText(value) { lastClipboard = value; } }, openExternal(uri) { lastOpenedExternal = uri; } },
   commands: { executeCommand(command, uri) { lastCommand = { command, uri }; } },
 };
 
@@ -131,6 +132,27 @@ test('openAttachment decodes one image on demand and opens it in VS Code', async
   assert.strictEqual(fs.readFileSync(lastCommand.uri.fsPath, 'utf8'), 'fake image bytes');
 });
 
+test('copyMessage copies only the selected readable message parts', async () => {
+  const viewer = new ConversationViewer({});
+  const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };
+  const entry = {
+    session,
+    convo: {
+      messages: [
+        { role: 'assistant', text: 'First assistant part' },
+        { role: 'tool', text: '[tool: Bash]' },
+        { role: 'assistant', text: 'Second assistant part' },
+      ],
+    },
+    title: 'T',
+    folder: 'F',
+  };
+
+  lastClipboard = null;
+  await viewer.onMessage(entry, { type: 'copyMessage', indices: [0, 1, 2, 99, -1] });
+  assert.strictEqual(lastClipboard, 'First assistant part\n\nSecond assistant part');
+});
+
 test('generated webview script is valid JavaScript', () => {
   const viewer = new ConversationViewer({});
   const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };
@@ -147,6 +169,42 @@ test('generated webview script is valid JavaScript', () => {
   const script = html.match(/<script nonce="[^"]+">([\s\S]*)<\/script>/);
   assert.ok(script, 'webview script found');
   assert.doesNotThrow(() => new vm.Script(script[1]));
+});
+
+test('message footer is opt-in and exposes copy, speaker, model, and time controls', () => {
+  const viewer = new ConversationViewer({});
+  const origGetConfiguration = fakeVscode.workspace.getConfiguration;
+  fakeVscode.workspace.getConfiguration = () => ({
+    get: (key, fallback) => ({
+      'messageFooter.enabled': true,
+      'messageFooter.showAvatar': true,
+      'messageFooter.showRole': true,
+      'messageFooter.showModel': true,
+      'messageFooter.showTime': true,
+    }[key] ?? fallback),
+  });
+  try {
+    const html = viewer.html({
+      session: { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp },
+      convo: {
+        firstTs: '2026-01-01T10:00:00Z',
+        lastTs: '2026-01-01T10:00:05Z',
+        messages: [
+          { role: 'user', text: 'hello', ts: '2026-01-01T10:00:00Z' },
+          { role: 'assistant', text: 'hi', model: 'claude-sonnet-4-5-20250929', ts: '2026-01-01T10:00:05Z' },
+        ],
+      },
+      title: 'T',
+      folder: 'F',
+    });
+    assert.match(html, /"messageFooter":\{"enabled":true,"showAvatar":true,"showRole":true,"showModel":true,"showTime":true\}/);
+    assert.match(html, /function messageFooter\(m, who, indices\)/);
+    assert.match(html, /message-footer-copy/);
+    assert.match(html, /modelLabel\(m\.model\)/);
+    assert.match(html, /type:'copyMessage'/);
+  } finally {
+    fakeVscode.workspace.getConfiguration = origGetConfiguration;
+  }
 });
 
 test('generated HTML uses one viewer mode with manual folding and no density toggle', () => {
@@ -168,8 +226,15 @@ test('generated HTML uses one viewer mode with manual folding and no density tog
     'hard height cap so folded code blocks stay clamped');
   assert.match(html, /--fold-lines:4/, 'default preview length is 4 lines');
   assert.match(html, /const isFolded = \(i\) => overrides\.has\(i\)/, 'folding stays per message');
-  assert.match(html, /id="settingsBtn"/);
+  assert.match(html, /id="namesBtn"|id="namesMenu"/,
+    'speaker naming controls stay inside the viewer');
+  assert.doesNotMatch(html, /data-th=/,
+    'theme stays in normal VS Code settings');
   assert.match(html, /id="copyConversation"/);
+  assert.match(html, /class="msg-copy"/);
+  assert.match(html, /\.msg-copy \{ position:absolute; bottom:-8px/,
+    'message copy is attached without reserving another layout row');
+  assert.match(html, /type:'copyMessage'/);
   assert.doesNotMatch(html, /\.row-text/);
   assert.doesNotMatch(html, /\.row-time/);
   assert.doesNotMatch(html, /id="moreBtn"|id="moreMenu"|mmCopy|mmExport|mmCopyPath|mmReveal/,
@@ -325,25 +390,29 @@ test('a <script> payload inside message text renders escaped, not as a live tag'
   assert.match(html, /\\u003cscript>alert\(1\)\\u003c\/script>/);
 });
 
-test('viewer settings persist labels, names, and theme', async () => {
+test('viewer reads theme from VS Code settings and labels from the viewer configuration source', () => {
   const viewer = new ConversationViewer({});
-  const updates = [];
   const origGetConfiguration = fakeVscode.workspace.getConfiguration;
   fakeVscode.workspace.getConfiguration = () => ({
-    get: (k, d) => d,
-    update: (key, value) => { updates.push([key, value]); },
+    get: (key, fallback) => ({
+      theme: 'dark',
+      userLabel: 'Yury',
+      agentLabel: 'Claude',
+      showNames: false,
+    }[key] ?? fallback),
   });
   try {
     const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };
-    const entry = { session, convo: { messages: [] }, title: 'T', folder: 'F' };
-
-    await viewer.onMessage(entry, { type: 'setConfig', userLabel: 'Yury', agentLabel: 'Claude', showNames: false, theme: 'dark' });
-    assert.deepStrictEqual(updates, [
-      ['theme', 'dark'],
-      ['userLabel', 'Yury'],
-      ['agentLabel', 'Claude'],
-      ['showNames', false],
-    ]);
+    const html = viewer.html({
+      session,
+      convo: { firstTs: null, lastTs: null, messages: [] },
+      title: 'T',
+      folder: 'F',
+    });
+    assert.match(html, /data-names="off"/);
+    assert.match(html, /"userLabel":"Yury"/);
+    assert.match(html, /"agentLabel":"Claude"/);
+    assert.match(html, /"theme":"dark"/);
   } finally {
     fakeVscode.workspace.getConfiguration = origGetConfiguration;
   }

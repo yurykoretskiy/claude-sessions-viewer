@@ -74,6 +74,16 @@
   - Use a names-specific control such as `Aa` instead of a generic settings
     gear when the menu only controls speaker names/labels.
 
+- [ ] DISCUSS: redesign Short / Full viewer modes (17 Jul 2026).
+  - Current behavior is too binary: Short folds every conversation bubble by
+    default, while Full unfolds every bubble and can make long sessions heavy.
+  - Decide whether the viewer should use one calm default with per-message
+    folding, or a lightweight preview that expands only the selected message.
+  - Preserve the performance boundary: large sessions must not render every
+    long message eagerly just because Full is selected.
+  - Keep the decision open until the viewer controls settle; do not add more
+    density settings meanwhile.
+
 ## Tree and navigation
 
 - [ ] Folder count display.
@@ -147,6 +157,45 @@
     messages that already fit inside the preview clamp (nothing to fold —
     detect overflow and suppress the control). Yury unsure the current
     always-on chevron is right.
+
+## Standalone morning viewer <!-- #claude -->
+
+- [ ] Standalone (no-VS-Code) observer, POC-first (15 Jul 2026). A tiny
+  on-demand local viewer for the start-of-day flow: shows the **last 20
+  sessions chronologically across all folders**, newest first, exactly
+  like the extension's timeline — but **read-only observer** (no rename,
+  no resume, no state changes). Folder is revealed **on hover** (tooltip),
+  not shown inline, to keep the list minimal. Per session, two actions:
+  **open the conversation viewer** and **open the repo in VS Code**
+  (`code <cwd>`). Reuses the existing VS-Code-free engine (indexer.js,
+  conversation.js, viewer HTML); retires the Python snapshot and the
+  kimuson wrapper. Form factor leaning: on-demand local web server
+  (lightest to build + at rest, and the only option that can launch
+  `code <folder>` and stay live). Skip the timeline flat-view redesign —
+  POC renders its own clean list, avoiding the fragile code path.
+- [ ] DISCUSS: should the standalone auto-quit after launching VS Code?
+  (15 Jul 2026). Once Yury is in VS Code + the extension, the standalone
+  is redundant (a transition tool). But he may want to open several VS
+  Code environments in one morning, so quitting too eagerly hurts.
+  Current lean: **keep it open** (do not auto-close); revisit after real
+  use. Not urgent.
+
+## Model tracing in the viewer <!-- #claude -->
+
+- [x] Model strip (shipped 15 Jul 2026, v1.17.0). Each assistant JSONL
+  record carries `message.model`; `computeModelRuns()` in conversation.js
+  collapses consecutive same-model assistant turns into runs (a run's
+  span extends through interleaved user/tool messages to the next switch,
+  `<synthetic>` turns skipped). Rendered as a narrow (7px) **neutral**
+  strip — no per-model color, divider lines only, per Yury's correction
+  (the first colorful/labeled mockup was over-built) — positioned just
+  left of the existing position rail, hover a segment for model + turn
+  count + time range. Off by default, toggled via a new header button
+  (segmented-lane icon, next to search). Tests: conversation.test.js
+  (run-collapsing incl. synthetic-skip + interleaved-span cases).
+- [ ] Persist the model-strip toggle across reopens (currently resets to
+  off each time the panel opens — same pattern as other view state; low
+  priority until real use shows it's wanted on by default).
 
 ## Global search follow-ups <!-- #claude -->
 
