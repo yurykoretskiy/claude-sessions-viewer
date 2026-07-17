@@ -171,6 +171,8 @@ test('generated HTML contains the Short/Full toggle and line-clamp CSS, no scan-
   assert.match(html, /--fold-lines:4/, 'default preview length is 4 lines');
   assert.doesNotMatch(html, /\.row-text/);
   assert.doesNotMatch(html, /\.row-time/);
+  assert.doesNotMatch(html, /id="moreBtn"|id="moreMenu"|mmCopy|mmExport|mmCopyPath|mmReveal/,
+    'viewer keeps raw/export/copy actions out of the main surface');
 });
 
 test('generated HTML uses the approved speaker palettes and keeps orange as the Claude identity accent', () => {
@@ -232,7 +234,7 @@ test('filter chips use the configured names in All, Agent, User order without fo
     const labelsFn = html.match(/function labels\(\) \{([\s\S]*?)\n\}/)[1];
     assert.match(filterMarkup, /data-f="all">All<\/button>\s*<button class="seg" data-f="assistant" id="chipAgent">Clone<\/button>\s*<button class="seg" data-f="user" id="chipUser">Yury<\/button>/);
     assert.doesNotMatch(filterMarkup, />Me<\/button>/);
-    assert.match(labelsFn, /user: \$\('userLabel'\)\.value\.trim\(\) \|\| 'USER'/);
+    assert.match(labelsFn, /user: DATA\.userLabel \|\| 'USER'/);
     assert.doesNotMatch(labelsFn, /\.toUpperCase\(\)/);
   } finally {
     fakeVscode.workspace.getConfiguration = origGetConfiguration;

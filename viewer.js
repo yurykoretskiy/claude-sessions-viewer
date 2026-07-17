@@ -6,18 +6,13 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { fileURLToPath } = require('url');
-const { extractConversation, conversationToText, computeModelRuns } = require('./conversation');
+const { extractConversation, computeModelRuns } = require('./conversation');
 const { SEARCH_SVG, MODEL_SVG } = require('./icons');
 
 const RENDER_WINDOW = 200; // big sessions: render latest N first, "render all" banner
 
 function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function shortHome(p) {
-  const home = os.homedir();
-  return p && p.startsWith(home) ? '~' + p.slice(home.length) : p || '?';
 }
 
 function fmt(ts) {
@@ -104,16 +99,6 @@ class ConversationViewer {
 
   async onMessage(entry, msg) {
     const { session, convo, title, folder } = entry;
-    const cfg = this.config;
-    const textOpts = (m) => ({
-      title,
-      folder,
-      userLabel: m.userLabel || cfg.userLabel,
-      agentLabel: m.agentLabel || cfg.agentLabel,
-      names: m.names !== false,
-      filter: m.filter || 'all',
-      withTools: false,
-    });
     switch (msg.type) {
       case 'resume': {
         if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session.id)) {
@@ -125,32 +110,6 @@ class ConversationViewer {
         terminal.sendText(`claude --resume ${session.id}`, true);
         break;
       }
-      case 'copy': {
-        await vscode.env.clipboard.writeText(conversationToText(convo, textOpts(msg)));
-        vscode.window.showInformationMessage(
-          `Copied entire conversation (${convo.messages.filter((m) => m.role !== 'tool').length} messages)`
-        );
-        break;
-      }
-      case 'copyPath':
-        await vscode.env.clipboard.writeText(session.file);
-        vscode.window.showInformationMessage('Copied raw session JSONL path.');
-        break;
-      case 'export': {
-        const uri = await vscode.window.showSaveDialog({
-          defaultUri: vscode.Uri.file(path.join(os.homedir(), `${title.replace(/[/\\:]/g, '-').slice(0, 60)}.md`)),
-          filters: { Markdown: ['md'] },
-        });
-        if (uri) {
-          const { writeFileSync } = require('fs');
-          writeFileSync(uri.fsPath, conversationToText(convo, textOpts(msg)));
-          vscode.window.showInformationMessage(`Exported to ${uri.fsPath}`);
-        }
-        break;
-      }
-      case 'reveal':
-        await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(session.file));
-        break;
       case 'openLink': {
         const href = String(msg.href || '').trim();
         if (!href) break;
@@ -190,13 +149,6 @@ class ConversationViewer {
       }
       case 'setConfig': {
         const c = vscode.workspace.getConfiguration('claudeSessionsViewer');
-        if (msg.theme) await c.update('theme', msg.theme, vscode.ConfigurationTarget.Global);
-        if (msg.userLabel !== undefined)
-          await c.update('userLabel', msg.userLabel || 'USER', vscode.ConfigurationTarget.Global);
-        if (msg.agentLabel !== undefined)
-          await c.update('agentLabel', msg.agentLabel || 'CLAUDE', vscode.ConfigurationTarget.Global);
-        if (msg.showNames !== undefined)
-          await c.update('showNames', !!msg.showNames, vscode.ConfigurationTarget.Global);
         if (msg.viewerDensity === 'full' || msg.viewerDensity === 'short')
           await c.update('viewerDensity', msg.viewerDensity, vscode.ConfigurationTarget.Global);
         break;
@@ -288,23 +240,6 @@ class ConversationViewer {
   .seg:last-child { border-right:none; }
   .seg.on { background:var(--btn2); color:var(--fg); }
   .spacer { flex:1 1 auto; }
-  .moremenu { position:absolute; top:100%; right:14px; margin-top:6px; background:var(--panel); border:1px solid var(--line);
-    border-radius:10px; padding:8px; font-size:12px; z-index:20; display:none; width:250px;
-    box-shadow:0 8px 28px rgba(0,0,0,.16); }
-  .moremenu.open { display:block; }
-  .mm-item { display:block; width:100%; text-align:left; border:none; background:transparent; color:var(--fg);
-    padding:7px 8px; border-radius:6px; cursor:pointer; font:inherit; font-size:12.5px; }
-  .mm-item:hover { background:var(--btn2); }
-  .mm-path { margin:-2px 8px 6px; color:var(--mut); font-family:var(--vscode-editor-font-family, ui-monospace, Menlo, monospace);
-    font-size:calc(var(--vscode-editor-font-size, 12px) * 0.85); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .mm-sep { height:1px; background:var(--line); margin:7px 2px; }
-  .mm-section-title { color:var(--mut); font-size:11px; text-transform:uppercase; letter-spacing:.04em; padding:4px 8px 2px; }
-  .mm-row { display:flex; align-items:center; gap:8px; margin:6px 8px; }
-  .mm-row .lbl { color:var(--mut); width:56px; flex-shrink:0; }
-  .mm-row .opt { border:1px solid var(--line); border-radius:9px; padding:0 9px; cursor:pointer; color:var(--mut); }
-  .mm-row .opt.on { border-color:var(--agent-strong); color:var(--agent-strong); }
-  .mm-row input[type=text] { background:var(--bg); border:1px solid var(--line); color:var(--fg);
-    border-radius:6px; padding:4px 7px; min-width:0; flex:1; font-size:12px; }
   .searchbar { display:none; grid-template-columns:1fr auto auto auto auto; align-items:center; gap:7px;
     padding:8px 16px; border-bottom:1px solid var(--line); flex-shrink:0; z-index:4; }
   .searchbar.open { display:grid; }
@@ -438,21 +373,6 @@ class ConversationViewer {
     <span class="spacer"></span>
     <button class="ibtn" id="modelToggle" aria-label="Model lane" data-tip="Which model handled what">${MODEL_SVG}</button>
     <button class="ibtn" id="searchToggle" aria-label="Search" data-tip="Search">${SEARCH_SVG}</button>
-    <button class="ibtn" id="moreBtn" aria-label="More options" data-tip="More options">⋯</button>
-    <div class="moremenu" id="moreMenu">
-      <button class="mm-item" id="mmCopy">Copy conversation</button>
-      <button class="mm-item" id="mmExport">Export Markdown</button>
-      <button class="mm-item" id="mmCopyPath">Copy raw JSONL path</button>
-      <div class="mm-path">${esc(shortHome(session.file))}</div>
-      <button class="mm-item" id="mmReveal">Reveal raw file</button>
-      <div class="mm-sep"></div>
-      <div class="mm-section-title">Labels &amp; theme</div>
-      <div class="mm-row"><label><input type="checkbox" id="showNames"${cfg.showNames ? ' checked' : ''}> Show names</label></div>
-      <div class="mm-row"><span class="lbl">You</span><input type="text" id="userLabel"></div>
-      <div class="mm-row"><span class="lbl">Agent</span><input type="text" id="agentLabel"></div>
-      <div class="mm-row"><span class="lbl">Theme</span>
-        <span class="opt" data-th="system">System</span><span class="opt" data-th="light">Light</span><span class="opt" data-th="dark">Dark</span></div>
-    </div>
   </div>
   <div class="searchbar" id="searchbar">
     <input class="searchbox" id="search" placeholder="Search inside this session">
@@ -492,16 +412,11 @@ const escHtml = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replac
 
 document.body.className = DATA.theme === 'system' ? 'sys' : DATA.theme;
 document.body.dataset.names = DATA.showNames ? 'on' : 'off';
-$('userLabel').value = DATA.userLabel;
-$('agentLabel').value = DATA.agentLabel;
-document.querySelectorAll('[data-th]').forEach(b => {
-  if (b.dataset.th === DATA.theme) b.classList.add('on');
-});
 
 function labels() {
   return {
-    user: $('userLabel').value.trim() || 'USER',
-    agent: $('agentLabel').value.trim() || 'CLAUDE'
+    user: DATA.userLabel || 'USER',
+    agent: DATA.agentLabel || 'CLAUDE'
   };
 }
 
@@ -700,11 +615,6 @@ function collectMatches() {
     if ((m.text || '').toLowerCase().includes(query)) found.push(i);
   });
   return found;
-}
-
-function state() {
-  const l = labels();
-  return { filter, names: document.body.dataset.names !== 'off', userLabel: l.user, agentLabel: l.agent };
 }
 
 function render(keepScroll) {
@@ -917,16 +827,6 @@ window.addEventListener('message', e => {
 });
 
 $('resume').onclick = () => vscodeApi.postMessage({ type:'resume' });
-$('mmCopy').onclick = () => { vscodeApi.postMessage(Object.assign({ type:'copy' }, state())); $('moreMenu').classList.remove('open'); };
-$('mmExport').onclick = () => { vscodeApi.postMessage(Object.assign({ type:'export' }, state())); $('moreMenu').classList.remove('open'); };
-$('mmCopyPath').onclick = () => { vscodeApi.postMessage({ type:'copyPath' }); $('moreMenu').classList.remove('open'); };
-$('mmReveal').onclick = () => { vscodeApi.postMessage({ type:'reveal' }); $('moreMenu').classList.remove('open'); };
-$('moreBtn').onclick = () => $('moreMenu').classList.toggle('open');
-document.addEventListener('click', e => {
-  if (!$('moreMenu').classList.contains('open')) return;
-  if (e.target === $('moreBtn') || $('moreMenu').contains(e.target)) return;
-  $('moreMenu').classList.remove('open');
-});
 $('searchToggle').onclick = () => {
   $('searchbar').classList.toggle('open');
   $('searchToggle').classList.toggle('open', $('searchbar').classList.contains('open'));
@@ -938,12 +838,6 @@ $('modelToggle').onclick = () => {
 };
 renderModelStrip();
 $('jump').onclick = () => { $('chat').scrollTop = $('chat').scrollHeight; updateRail(); };
-$('showNames').onchange = e => {
-  document.body.dataset.names = e.target.checked ? 'on' : 'off';
-  vscodeApi.postMessage({ type:'setConfig', showNames: e.target.checked });
-};
-$('userLabel').oninput = () => { render(true); vscodeApi.postMessage({ type:'setConfig', userLabel: $('userLabel').value }); };
-$('agentLabel').oninput = () => { render(true); vscodeApi.postMessage({ type:'setConfig', agentLabel: $('agentLabel').value }); };
 $('search').oninput = () => {
   currentMatch = 0;
   if (!$('search').value.trim()) overrides.clear();
@@ -975,12 +869,6 @@ document.querySelectorAll('[data-d]').forEach(b => b.onclick = () => {
 document.querySelectorAll('[data-f]').forEach(b => b.onclick = () => {
   document.querySelectorAll('[data-f]').forEach(x => x.classList.remove('on'));
   b.classList.add('on'); filter = b.dataset.f; currentMatch = 0; render(true);
-});
-document.querySelectorAll('[data-th]').forEach(b => b.onclick = () => {
-  document.querySelectorAll('[data-th]').forEach(x => x.classList.remove('on'));
-  b.classList.add('on');
-  document.body.className = b.dataset.th === 'system' ? 'sys' : b.dataset.th;
-  vscodeApi.postMessage({ type:'setConfig', theme: b.dataset.th });
 });
 document.addEventListener('click', e => {
   const attachment = e.target.closest && e.target.closest('[data-attachment]');
