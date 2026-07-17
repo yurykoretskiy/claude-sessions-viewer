@@ -32,6 +32,13 @@
   - Do not make it draggable and do not replace the native scrollbar.
   - Hide/fade the marker when the user is not scrolling.
 
+- [ ] Redesign the bottom position pill (17 Jul 2026).
+  - At the final messages, the date/message counter can extend below the
+    visible webview and be covered by the VS Code status bar.
+  - Keep the indicator fully inside the viewer by clamping its position or
+    anchoring it above the jump-to-latest button rather than centering it on
+    the rail endpoint.
+
 - [ ] Sticky date behavior.
   - Keep date context visible while scrolling, WhatsApp-style.
   - Update the date based on the currently visible message.
@@ -180,22 +187,14 @@
   Current lean: **keep it open** (do not auto-close); revisit after real
   use. Not urgent.
 
-## Model tracing in the viewer <!-- #claude -->
+## Model details in the viewer <!-- #codex -->
 
-- [x] Model strip (shipped 15 Jul 2026, v1.17.0). Each assistant JSONL
-  record carries `message.model`; `computeModelRuns()` in conversation.js
-  collapses consecutive same-model assistant turns into runs (a run's
-  span extends through interleaved user/tool messages to the next switch,
-  `<synthetic>` turns skipped). Rendered as a narrow (7px) **neutral**
-  strip — no per-model color, divider lines only, per Yury's correction
-  (the first colorful/labeled mockup was over-built) — positioned just
-  left of the existing position rail, hover a segment for model + turn
-  count + time range. Off by default, toggled via a new header button
-  (segmented-lane icon, next to search). Tests: conversation.test.js
-  (run-collapsing incl. synthetic-skip + interleaved-span cases).
-- [ ] Persist the model-strip toggle across reopens (currently resets to
-  off each time the panel opens — same pattern as other view state; low
-  priority until real use shows it's wanted on by default).
+- [x] Per-message model details. Each assistant record keeps its
+  `message.model` field and the viewer exposes the model beside the Claude
+  label in a compact footer. The footer visibility button changes a CSS class
+  without rebuilding the conversation.
+- [x] Removed the obsolete model-run timeline computation and its tests. No
+  model strip or model timeline remains in the viewer.
 
 ## Global search follow-ups <!-- #claude -->
 

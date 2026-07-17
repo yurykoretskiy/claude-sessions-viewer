@@ -148,7 +148,8 @@ session-level browsing.
 - `claudeSessionsViewer.userLabel` and `claudeSessionsViewer.agentLabel` —
   labels shown in the optional message footer and conversation copies.
 - The model button in the viewer toggles compact per-message footers. Long
-  messages use per-message **Show more** / **Show less** controls.
+  messages use measured, per-message **Show more** / **Show less** controls
+  with a larger assistant preview and a tighter user preview.
 - `claudeSessionsViewer.promptChildren.enabled` — show prompt/message rows
   under sessions. Off by default.
 - `claudeSessionsViewer.timeline.enabled` — show the experimental flat session

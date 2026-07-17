@@ -18,4 +18,8 @@ const COPY_SVG =
   '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round" aria-hidden="true">' +
   '<rect x="5.5" y="5.5" width="7.5" height="7.5" rx="1.2"/><path d="M10.5 5.5V4.2c0-.7-.5-1.2-1.2-1.2H4.2c-.7 0-1.2.5-1.2 1.2v5.1c0 .7.5 1.2 1.2 1.2h1.3"/></svg>';
 
-module.exports = { SEARCH_SVG, MODEL_SVG, COPY_SVG };
+const REFRESH_SVG =
+  '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M13.3 5.8A5.5 5.5 0 1 0 14 9"/><path d="M13.3 2.8v3.4H10"/></svg>';
+
+module.exports = { SEARCH_SVG, MODEL_SVG, COPY_SVG, REFRESH_SVG };

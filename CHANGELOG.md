@@ -6,6 +6,20 @@ All notable changes to this extension. Format follows
 installable `.vsix` on the
 [Releases page](https://github.com/yurykoretskiy/claude-sessions-viewer/releases).
 
+## [1.18.12] — 2026-07-17
+
+### Changed
+- Viewer message footers are always present in the DOM and toggle without
+  rebuilding the conversation, so the reading position stays stable.
+- Long-message previews now render the complete stored message, detect real
+  rendered overflow, use a larger assistant preview, a tighter user preview,
+  and a subtle fade with Show more / Show less links.
+- Added a refresh action inside the viewer and simplified the header to folder
+  plus session title.
+- Folder icons are neutral and no longer use spark decorations.
+- Removed the obsolete model-run timeline computation while preserving the
+  per-message model field used by footers.
+
 ## [1.17.0] — 2026-07-14
 
 ### Added

@@ -24,7 +24,7 @@ const fakeVscode = {
   EventEmitter: class { constructor() { this.event = () => {}; } fire() {} },
   TreeItem: class { constructor(label, state) { this.label = label; this.collapsibleState = state; } },
   TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
-  ThemeIcon: class {},
+  ThemeIcon: class { constructor(id) { this.id = id; } },
   MarkdownString: class {
     constructor(s = '') { this.value = s; }
     appendMarkdown(s) { this.value += s; return this; }
@@ -215,7 +215,7 @@ test('collapse-all keeps the folder containing the revealed session expanded', (
   );
 });
 
-test('live sessions use the Claude presence icon and highlight their containing folder', () => {
+test('live sessions use the Claude presence icon while folders stay neutral', () => {
   const live = {
     ...S('live-now', 'active-project', new Date().toISOString()),
     mtimeMs: Date.now(),
@@ -231,8 +231,8 @@ test('live sessions use the Claude presence icon and highlight their containing 
 
   const activeFolderItem = p.getTreeItem({ kind: 'folder', group: activeGroup });
   const quietFolderItem = p.getTreeItem({ kind: 'folder', group: quietGroup });
-  assert.strictEqual(activeFolderItem.iconPath.parts.at(-1), 'folder-active.svg');
-  assert.strictEqual(quietFolderItem.iconPath.parts.at(-1), 'folder-spark.svg');
+  assert.strictEqual(activeFolderItem.iconPath.id, 'folder');
+  assert.strictEqual(quietFolderItem.iconPath.id, 'folder');
 
   const liveSessionItem = p.getTreeItem({ kind: 'session', session: live, group: activeGroup });
   const inactiveSessionItem = p.getTreeItem({ kind: 'session', session: inactive, group: quietGroup });

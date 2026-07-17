@@ -185,11 +185,12 @@ test('generated HTML uses one viewer mode with manual folding and no density tog
     folder: 'F',
   });
   assert.doesNotMatch(html, /data-d="short"|data-d="full"/);
-  assert.match(html, /-webkit-line-clamp:var\(--fold-lines, 4\)/);
-  assert.match(html, /max-height:calc\(var\(--fold-lines, 4\) \* 1\.52em\)/,
-    'hard height cap so folded code blocks stay clamped');
-  assert.match(html, /--fold-lines:4/, 'default preview length is 4 lines');
-  assert.match(html, /function needsMore\(indices\)/, 'long messages get progressive disclosure');
+  assert.match(html, /max-height:calc\(var\(--message-fold-lines, 10\) \* 1\.52em\)/,
+    'folded messages use a larger measured preview cap');
+  assert.match(html, /--fold-lines:10/, 'default preview length is 10 lines');
+  assert.match(html, /function syncFoldControls\(\)/, 'long messages use post-layout overflow detection');
+  assert.match(html, /scrollHeight > body\.clientHeight/, 'overflow is measured from rendered content');
+  assert.match(html, /mask-image:linear-gradient/, 'folded messages fade at the bottom');
   assert.doesNotMatch(html, /id="namesBtn"|id="namesMenu"|id="showNames"/,
     'speaker names are no longer controlled inside the viewer');
   assert.match(html, /id="modelToggle"/);
@@ -198,6 +199,14 @@ test('generated HTML uses one viewer mode with manual folding and no density tog
   assert.doesNotMatch(html, /data-th=/,
     'theme stays in normal VS Code settings');
   assert.match(html, /id="copyConversation"/);
+  assert.match(html, /id="refreshViewer"/);
+  assert.match(html, /type:'refresh'/);
+  assert.doesNotMatch(html, /id="resume"/, 'viewer header no longer contains a terminal runner');
+  assert.match(html, /class="folder-label"/);
+  assert.match(html, /footer-hidden/);
+  assert.match(html, /classList\.toggle\('footer-visible'\)/);
+  assert.doesNotMatch(html, /showFooter|render\(true\);\s*\n?\s*};\s*\n?\s*\$\('jump'/,
+    'footer visibility does not use a render pass');
   assert.match(html, /class="msg-copy"/);
   assert.match(html, /\.msg-copy \{ position:absolute; bottom:-8px/,
     'message copy is attached without reserving another layout row');
@@ -325,6 +334,7 @@ test('turn-merge, unified fold, and draggable rail are present in the generated 
   assert.match(script, /overrides/);
   assert.match(script, /Show more/);
   assert.match(script, /Show less/);
+  assert.match(script, /toggleFoldInPlace/);
   assert.doesNotMatch(script, /fold-ind/);
   assert.match(html, /\.msg\.folded \.bodywrap/);
 

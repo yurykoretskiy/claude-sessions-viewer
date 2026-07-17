@@ -7,19 +7,12 @@ const path = require('path');
 const os = require('os');
 const { fileURLToPath } = require('url');
 const { extractConversation, conversationToText } = require('./conversation');
-const { SEARCH_SVG, MODEL_SVG, COPY_SVG } = require('./icons');
+const { SEARCH_SVG, MODEL_SVG, COPY_SVG, REFRESH_SVG } = require('./icons');
 
 const RENDER_WINDOW = 200; // big sessions: render latest N first, "render all" banner
 
 function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function fmt(ts) {
-  if (!ts) return '?';
-  const d = new Date(ts);
-  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) +
-    ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 }
 
 function cleanLabel(value, fallback) {
@@ -41,7 +34,7 @@ class ConversationViewer {
       userLabel: cleanLabel(c.get('userLabel', 'USER'), 'USER'),
       agentLabel: cleanLabel(c.get('agentLabel', 'CLAUDE'), 'CLAUDE'),
       liveRefresh: c.get('liveRefresh.enabled', false),
-      shortPreviewLines: c.get('shortPreviewLines', 4),
+      shortPreviewLines: c.get('shortPreviewLines', 10),
     };
   }
 
@@ -104,6 +97,21 @@ class ConversationViewer {
     const { session, convo, title, folder } = entry;
     const cfg = this.config;
     switch (msg.type) {
+      case 'refresh': {
+        try {
+          entry.convo = await extractConversation(session.file);
+          entry.panel.webview.postMessage({
+            type: 'update',
+            messages: entry.convo.messages,
+            firstTs: entry.convo.firstTs,
+            lastTs: entry.convo.lastTs,
+          });
+        } catch (error) {
+          vscode.window.showErrorMessage(`Claude Sessions: could not refresh conversation — ${error.message}`);
+          entry.panel.webview.postMessage({ type: 'refreshError' });
+        }
+        break;
+      }
       case 'resume': {
         if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session.id)) {
           vscode.window.showErrorMessage('Claude Sessions: refusing to resume — session id is not a valid UUID.');
@@ -195,7 +203,7 @@ class ConversationViewer {
       userLabel: cfg.userLabel,
       agentLabel: cfg.agentLabel,
       theme: cfg.theme,
-      foldLines: Math.max(1, Math.min(30, Number(cfg.shortPreviewLines) || 4)),
+      foldLines: Math.max(1, Math.min(30, Number(cfg.shortPreviewLines) || 10)),
       window: RENDER_WINDOW,
       sessionId: session.id,
       rawPath: session.file,
@@ -254,9 +262,7 @@ class ConversationViewer {
     border:1px solid var(--vscode-editorHoverWidget-border,transparent); padding:3px 8px; border-radius:5px;
     font-size:11px; white-space:nowrap; opacity:0; pointer-events:none; transition:opacity .1s ease; z-index:30; }
   [data-tip]:hover::after, [data-tip]:focus-visible::after { opacity:1; transition-delay:.15s; }
-  .ibtn.terminal { width:38px; border-color:var(--line); font-family:var(--vscode-editor-font-family, ui-monospace, Menlo, monospace);
-    font-size:calc(var(--vscode-editor-font-size, 12px) * 0.95); line-height:1; }
-  .meta { color:var(--mut); font-size:12px; margin-top:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .folder-label { color:var(--mut); font-size:11px; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:3px; }
   .controls { display:flex; gap:8px; align-items:center; padding:8px 14px; border-bottom:1px solid var(--line);
     font-size:12px; flex-wrap:nowrap; flex-shrink:0; z-index:4; position:relative; }
   .segmented { display:flex; border:1px solid var(--line); border-radius:999px; overflow:hidden; flex-shrink:0; }
@@ -282,11 +288,9 @@ class ConversationViewer {
     box-shadow:0 2px 9px rgba(0,0,0,.05); }
   .msg { max-width:78%; width:fit-content; margin:9px 0; padding:9px 12px; border-radius:13px; overflow-wrap:break-word; position:relative; }
   .msg.folded { cursor:pointer; margin:4px 0; padding:6px 10px; }
-  .msg.folded .bodywrap { display:-webkit-box; -webkit-box-orient:vertical;
-    -webkit-line-clamp:var(--fold-lines, 4); overflow:hidden;
-    /* line-clamp can't fracture monolithic children (code blocks are scroll
-       containers), so a hard height cap guarantees the preview stays short */
-    max-height:calc(var(--fold-lines, 4) * 1.52em); }
+  .msg.folded .bodywrap { overflow:hidden; max-height:calc(var(--message-fold-lines, 10) * 1.52em);
+    -webkit-mask-image:linear-gradient(to bottom, #000 0%, #000 calc(100% - 3rem), transparent 100%);
+    mask-image:linear-gradient(to bottom, #000 0%, #000 calc(100% - 3rem), transparent 100%); }
   .part-sep { height:1px; background:color-mix(in srgb, var(--line) 55%, transparent); margin:9px -3px; }
   .msg, .msg.folded { padding-right:26px; }
   .msg.user { margin-left:auto; background:var(--user-bub); border-right:3px solid var(--user-edge); border-bottom-right-radius:4px; }
@@ -302,10 +306,20 @@ class ConversationViewer {
   .msg-copy .copied-mark { font-size:14px; line-height:1; }
   .message-footer { display:flex; align-items:center; gap:6px; margin-top:9px; padding-top:7px;
     border-top:1px solid color-mix(in srgb, var(--line) 70%, transparent); color:var(--mut);
-    font-size:10.5px; letter-spacing:.01em; min-height:18px; }
+    font-size:10.5px; letter-spacing:.01em; min-height:18px;
+    visibility:hidden; opacity:0; transition:opacity .12s ease; }
+  body.footer-visible .message-footer { visibility:visible; opacity:1; }
   .message-footer-avatar { width:15px; height:15px; flex:0 0 15px; object-fit:contain; }
   body.dark .message-footer-avatar { filter:invert(1) opacity(.84); }
   .message-footer-user { color:var(--user-strong); font-size:10px; font-weight:700; }
+  .more { border:0; padding:0; margin:7px 0 0; background:transparent; color:var(--agent-strong);
+    font:inherit; font-size:12px; cursor:pointer; display:block; }
+  .more:hover, .more:focus-visible { text-decoration:underline; outline:none; }
+  .more::after { content:'⌄'; display:inline-block; margin-left:5px; font-size:12px; }
+  .msg:not(.folded) .more::after { content:'⌃'; }
+  .more[hidden] { display:none; }
+  .ibtn.spinning svg { animation:spin .8s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
   .body p { margin:0 0 7px; white-space:pre-wrap; }
   .body p:last-child { margin-bottom:0; }
   .body a { color:var(--vscode-textLink-foreground,#2677c9); text-decoration:underline; text-underline-offset:2px; }
@@ -369,14 +383,13 @@ class ConversationViewer {
   }
 </style>
 </head>
-<body class="sys" style="--fold-lines:${Math.max(1, Math.min(30, Number(cfg.shortPreviewLines) || 4))}">
+<body class="sys footer-hidden" style="--fold-lines:${Math.max(1, Math.min(30, Number(cfg.shortPreviewLines) || 10))}">
 <main class="viewer">
   <div class="vhead">
+    <div class="folder-label" title="${esc(folder)}">${esc(folder)}</div>
     <div class="vrow">
       <span class="title">${esc(title)}</span>
-      <button class="ibtn terminal" id="resume" aria-label="Resume in Claude terminal" data-tip="Resume — runs in a terminal">▶_</button>
     </div>
-    <div class="meta" id="meta">${esc(folder)} · ${nMsgs} messages · ${esc(session.id)} · ${fmt(convo.firstTs)} → ${fmt(convo.lastTs)}</div>
   </div>
   <div class="controls">
     <div class="segmented" id="filterSeg">
@@ -384,9 +397,10 @@ class ConversationViewer {
       <button class="seg" data-f="assistant" id="chipAgent">${esc(cfg.agentLabel)}</button>
       <button class="seg" data-f="user" id="chipUser">${esc(cfg.userLabel)}</button>
     </div>
-    <button class="ibtn" id="copyConversation" aria-label="Copy whole conversation" data-tip="Copy whole conversation">${COPY_SVG}</button>
+    <button class="ibtn" id="refreshViewer" aria-label="Refresh conversation" data-tip="Refresh conversation">${REFRESH_SVG}</button>
     <span class="spacer"></span>
     <button class="ibtn" id="modelToggle" aria-label="Show message details" aria-pressed="false" data-tip="Show model and speaker">${MODEL_SVG}</button>
+    <button class="ibtn" id="copyConversation" aria-label="Copy whole conversation" data-tip="Copy whole conversation">${COPY_SVG}</button>
     <button class="ibtn" id="searchToggle" aria-label="Search" data-tip="Search">${SEARCH_SVG}</button>
   </div>
   <div class="searchbar" id="searchbar">
@@ -408,23 +422,18 @@ class ConversationViewer {
 const vscodeApi = acquireVsCodeApi();
 const DATA = ${data};
 const MESSAGE_COPY_ICON = ${messageCopyIcon};
-// Folded previews are clamped by CSS; rendering huge bodies behind the clamp
-// is wasted work, so cap the source text generously relative to the preview.
-const FOLDED_RENDER_CAP = Math.max(1200, (DATA.foldLines || 4) * 160);
 let filter = 'all';
 let renderAll = DATA.messages.length <= DATA.window * 1.2;
 let currentMatch = 0;
 let matches = [];
 let scrollTimer = 0;
-let showFooter = false;
 // Bubble ids expanded by the reader. Long messages start compact and expose
 // their own Show more / Show less control.
 const overrides = new Set();
-const toggleFold = (i) => { if (overrides.has(i)) overrides.delete(i); else overrides.add(i); };
 const $ = id => document.getElementById(id);
 const escHtml = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
-document.body.className = DATA.theme === 'system' ? 'sys' : DATA.theme;
+document.body.className = (DATA.theme === 'system' ? 'sys' : DATA.theme) + ' footer-hidden';
 
 function labels() {
   return {
@@ -433,8 +442,9 @@ function labels() {
   };
 }
 
-function needsMore(indices) {
-  return indices.some(i => String(DATA.messages[i] && DATA.messages[i].text || '').length > FOLDED_RENDER_CAP);
+function foldLinesForRole(role) {
+  const base = Math.max(1, Number(DATA.foldLines) || 10);
+  return role === 'user' ? Math.max(3, Math.round(base * 0.4)) : base;
 }
 
 function messageFooter(m) {
@@ -625,12 +635,47 @@ function highlightHtml(html, query, isCurrent) {
   return template.innerHTML;
 }
 
-function renderMessageBody(m, index, isCurrentMatch, folded) {
-  let text = m.text || '';
-  if (folded && text.length > FOLDED_RENDER_CAP) text = text.slice(0, FOLDED_RENDER_CAP);
-  let html = renderSimpleMarkdown(text);
+function renderMessageBody(m, index, isCurrentMatch) {
+  // The extractor already caps each message at 8,000 characters. Keep that
+  // complete capped body here so the browser can measure real overflow rather
+  // than guessing from source length or cutting Markdown before rendering.
+  let html = renderSimpleMarkdown(m.text || '');
   html = highlightHtml(html, $('search').value.trim(), isCurrentMatch);
   return { html };
+}
+
+function syncFoldControls() {
+  $('chat').querySelectorAll('.msg').forEach((msg) => {
+    const body = msg.querySelector('.bodywrap');
+    const more = msg.querySelector('.more');
+    if (!body || !more) return;
+    const wasExpanded = !msg.classList.contains('folded');
+    if (wasExpanded) msg.classList.add('folded');
+    const overflow = body.scrollHeight > body.clientHeight + 1;
+    if (wasExpanded) msg.classList.remove('folded');
+    msg.dataset.hasOverflow = overflow ? 'true' : 'false';
+    if (!overflow) {
+      msg.classList.remove('folded');
+      overrides.delete(Number(msg.dataset.i));
+    }
+    more.hidden = !overflow;
+    more.textContent = msg.classList.contains('folded') ? 'Show more' : 'Show less';
+    more.setAttribute('aria-expanded', msg.classList.contains('folded') ? 'false' : 'true');
+  });
+}
+
+function toggleFoldInPlace(i) {
+  const msg = $('chat').querySelector('.msg[data-i="' + i + '"]');
+  if (!msg || msg.dataset.hasOverflow !== 'true') return;
+  const folded = msg.classList.toggle('folded');
+  if (folded) overrides.delete(i);
+  else overrides.add(i);
+  const more = msg.querySelector('.more');
+  if (more) {
+    more.textContent = folded ? 'Show more' : 'Show less';
+    more.setAttribute('aria-expanded', folded ? 'false' : 'true');
+  }
+  updateRail();
 }
 
 function collectMatches() {
@@ -697,24 +742,23 @@ function render(keepScroll) {
     const g0 = g.indices[0];
     const day = dayOf(msgs[g0].ts);
     if (day && day !== lastDay && filter === 'all') { frag.push('<div class="day">' + day + '</div>'); lastDay = day; }
-    const hasMore = needsMore(g.indices);
-    const folded = hasMore && !overrides.has(g0);
+    const folded = !overrides.has(g0);
     const parts = g.indices.map(idx => {
       const m = msgs[idx];
-      const body = renderMessageBody(m, idx, matches[currentMatch] === idx, folded);
+      const body = renderMessageBody(m, idx, matches[currentMatch] === idx);
       const attachments = renderAttachments(m.attachments);
       return '<div class="part" data-i="' + idx + '">' + attachments + '<div class="body">' + body.html + '</div></div>';
     }).join('<div class="part-sep"></div>');
     const foldedClass = folded ? ' folded' : '';
-    const moreButton = hasMore
-      ? '<button class="more" data-fold="' + g0 + '" type="button">' + (folded ? 'Show more' : 'Show less') + '</button>'
-      : '';
+    const moreButton = '<button class="more" data-fold="' + g0 + '" type="button" hidden aria-expanded="' + (!folded) + '">' + (folded ? 'Show more' : 'Show less') + '</button>';
     const copyButton = '<button class="msg-copy" data-copy="' + g.indices.join(',') + '" aria-label="Copy message" title="Copy message">' + MESSAGE_COPY_ICON + '</button>';
-    const footer = showFooter ? messageFooter(msgs[g.indices[g.indices.length - 1]]) : '';
-    frag.push('<div class="msg ' + g.role + foldedClass + '" data-i="' + g0 + '" data-day="' + (day || '') + '"><div class="bodywrap">' + parts + '</div>' + moreButton + footer + copyButton + '</div>');
+    const footer = messageFooter(msgs[g.indices[g.indices.length - 1]]);
+    const foldLines = foldLinesForRole(g.role);
+    frag.push('<div class="msg ' + g.role + foldedClass + '" style="--message-fold-lines:' + foldLines + '" data-i="' + g0 + '" data-day="' + (day || '') + '"><div class="bodywrap">' + parts + '</div>' + moreButton + footer + copyButton + '</div>');
   }
   frag.push('<div class="bottom-spacer" aria-hidden="true"></div>');
   chat.insertAdjacentHTML('beforeend', frag.join(''));
+  syncFoldControls();
   const rall = $('rall');
   if (rall) rall.onclick = () => { renderAll = true; render(); };
   chat.querySelectorAll('.copy-code').forEach(btn => btn.onclick = (e) => {
@@ -742,20 +786,13 @@ function render(keepScroll) {
   // progressive-disclosure behavior of the official Claude interface.
   chat.querySelectorAll('.more').forEach(el => el.onclick = (e) => {
     e.stopPropagation();
-    toggleFold(+el.dataset.fold);
-    render(true);
+    toggleFoldInPlace(+el.dataset.fold);
   });
   updateMatches(false);
   if (keepScroll && !wasAtBottom) chat.scrollTop = prevScroll;
   else chat.scrollTop = chat.scrollHeight;
   updateRail();
 }
-
-function fmtTs(ts){ if(!ts) return '?'; const d = new Date(ts);
-  return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) + ' ' +
-         d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}); }
-
-function fmtHM(ts){ if(!ts) return '?'; return new Date(ts).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}); }
 
 function modelLabel(id) {
   const m = String(id || '').match(/claude-([a-z]+)/i);
@@ -836,13 +873,28 @@ window.addEventListener('message', e => {
   if (m.type === 'find') { applyFind(m); return; }
   if (m.type === 'update') {
     DATA.messages = m.messages;
-    $('meta').textContent = '${esc(folder)} · ' + DATA.messages.filter(x => x.role !== 'tool').length +
-      ' messages · ' + DATA.sessionId + ' · ' + fmtTs(m.firstTs) + ' → ' + fmtTs(m.lastTs) + ' · live';
+    DATA.firstTs = m.firstTs;
+    DATA.lastTs = m.lastTs;
+    setRefreshing(false);
     render(true);
+    return;
   }
+  if (m.type === 'refreshError') setRefreshing(false);
 });
 
-$('resume').onclick = () => vscodeApi.postMessage({ type:'resume' });
+function setRefreshing(value) {
+  const btn = $('refreshViewer');
+  if (!btn) return;
+  btn.disabled = value;
+  btn.classList.toggle('spinning', value);
+  btn.setAttribute('aria-busy', value ? 'true' : 'false');
+}
+
+$('refreshViewer').onclick = () => {
+  if ($('refreshViewer').disabled) return;
+  setRefreshing(true);
+  vscodeApi.postMessage({ type:'refresh' });
+};
 $('copyConversation').onclick = () => vscodeApi.postMessage({ type:'copy' });
 $('searchToggle').onclick = () => {
   $('searchbar').classList.toggle('open');
@@ -850,10 +902,10 @@ $('searchToggle').onclick = () => {
   if ($('searchbar').classList.contains('open')) $('search').focus();
 };
 $('modelToggle').onclick = () => {
-  showFooter = !showFooter;
-  $('modelToggle').classList.toggle('open', showFooter);
-  $('modelToggle').setAttribute('aria-pressed', showFooter ? 'true' : 'false');
-  render(true);
+  const visible = document.body.classList.toggle('footer-visible');
+  document.body.classList.toggle('footer-hidden', !visible);
+  $('modelToggle').classList.toggle('open', visible);
+  $('modelToggle').setAttribute('aria-pressed', visible ? 'true' : 'false');
 };
 $('jump').onclick = () => { $('chat').scrollTop = $('chat').scrollHeight; updateRail(); };
 $('search').oninput = () => {

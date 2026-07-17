@@ -164,31 +164,4 @@ function conversationToText(convo, opts) {
   return lines.join('\n').trim() + '\n';
 }
 
-// Collapses the assistant `model` field into contiguous runs — which model
-// handled which stretch of the conversation. A run's span extends through
-// any interleaved user/tool messages up to the next model switch, so the
-// whole transcript is covered with no gaps. `<synthetic>` (harness-injected)
-// and model-less turns don't start or extend a run; they're simply skipped.
-function computeModelRuns(messages) {
-  const runs = [];
-  let currentModel = null;
-  messages.forEach((m, i) => {
-    if (m.role !== 'assistant' || !m.model || m.model === '<synthetic>') return;
-    if (m.model !== currentModel) {
-      currentModel = m.model;
-      runs.push({ model: currentModel, startIndex: i, endIndex: i, turns: 0, tsStart: null, tsEnd: null });
-    }
-    const run = runs[runs.length - 1];
-    run.turns++;
-    run.endIndex = i;
-    if (!run.tsStart) run.tsStart = m.ts || null;
-    run.tsEnd = m.ts || run.tsEnd;
-  });
-  for (let r = 0; r < runs.length; r++) {
-    runs[r].endIndex = r + 1 < runs.length ? runs[r + 1].startIndex - 1 : messages.length - 1;
-  }
-  if (runs.length) runs[0].startIndex = 0;
-  return runs;
-}
-
-module.exports = { extractConversation, conversationToText, textFromContent, computeModelRuns, MSG_CHAR_CAP };
+module.exports = { extractConversation, conversationToText, textFromContent, MSG_CHAR_CAP };

@@ -429,7 +429,6 @@ class SessionTreeProvider {
     }
     if (element.kind === 'folder') {
       const g = element.group;
-      const hasLiveSession = g.sessions.some((session) => isLiveSession(session));
       const keepRevealedOpen = this.groupContainsSelectedSession(g);
       const isExpanded = this.expandedAll || keepRevealedOpen;
       const item = new vscode.TreeItem(
@@ -453,14 +452,12 @@ class SessionTreeProvider {
       const countPart = `(${g.sessions.length})`;
       const statusPart = exists ? '' : 'gone';
       item.description = [parentHint, countPart, statusPart].filter(Boolean).join(' · ');
-      item.iconPath = vscode.Uri.joinPath(
-        this.context.extensionUri,
-        'assets',
-        hasLiveSession ? 'folder-active.svg' : 'folder-spark.svg'
-      );
+      // Folder rows are navigation anchors, not activity indicators. Keep
+      // their icon neutral; live state belongs on the session row itself.
+      item.iconPath = new vscode.ThemeIcon('folder');
       item.contextValue = 'folder';
       item.tooltip = exists
-        ? `${g.folderPath}${hasLiveSession ? '\n\nClaude is active in this folder.' : ''}`
+        ? g.folderPath
         : `${g.folderPath}\n\nThis folder no longer exists on disk — the sessions recorded here are kept as history.`;
       return item;
     }
