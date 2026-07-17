@@ -470,7 +470,7 @@ class SessionTreeProvider {
     // Single em-space padding: VS Code has no per-item indent API, and
     // sessions at the default tree indent read as siblings of the folders.
     const ageTs = s.effTs || s.lastTs;
-    // A live session gets the compact Claude spark icon. Inactive rows retain
+    // A live session gets the compact Claude mascot. Inactive rows retain
     // the em-space padding: VS Code does not expose per-item indent controls.
     const live = isLiveSession(s);
     const visibleTitle = this.treeMode === 'chronological' ? truncateTitle(title) : title;
@@ -483,7 +483,7 @@ class SessionTreeProvider {
     );
     item.id = 's:' + s.id;
     item.description = this.treeMode === 'chronological' && element.group ? element.group.label : '';
-    if (live) item.iconPath = vscode.Uri.joinPath(this.context.extensionUri, 'assets', 'session-active.svg');
+    if (live) item.iconPath = vscode.Uri.joinPath(this.context.extensionUri, 'assets', 'mascot-icon.png');
     item.contextValue = 'session';
     const firstTs = s.firstMessageTs || s.lastTs;
     const lastTs = s.lastMessageTs || s.lastTs;

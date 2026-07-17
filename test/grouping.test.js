@@ -212,7 +212,7 @@ test('live sessions use the Claude presence icon and highlight their containing 
 
   const liveSessionItem = p.getTreeItem({ kind: 'session', session: live, group: activeGroup });
   const inactiveSessionItem = p.getTreeItem({ kind: 'session', session: inactive, group: quietGroup });
-  assert.strictEqual(liveSessionItem.iconPath.parts.at(-1), 'session-active.svg');
+  assert.strictEqual(liveSessionItem.iconPath.parts.at(-1), 'mascot-icon.png');
   assert.strictEqual(inactiveSessionItem.iconPath, undefined);
   assert.doesNotMatch(liveSessionItem.label, /●/, 'the Claude icon replaces the generic live dot');
 });

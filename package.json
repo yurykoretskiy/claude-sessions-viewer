@@ -2,7 +2,7 @@
   "name": "claude-sessions-viewer",
   "displayName": "Claude Sessions Viewer",
   "description": "Read Claude Code sessions like chat: locate current work, review history, export Markdown. Read-only, local, zero dependencies.",
-  "version": "1.18.3",
+  "version": "1.18.4",
   "publisher": "yurykoretskiy",
   "license": "MIT",
   "engines": {
@@ -37,7 +37,7 @@
         {
           "id": "claudeSessions",
           "title": "Claude Sessions",
-          "icon": "assets/icon.svg"
+          "icon": "assets/mascot-icon.png"
         }
       ]
     },
@@ -54,8 +54,8 @@
         "command": "claudeSessions.revealCurrent",
         "title": "Claude Sessions: Reveal current session",
         "icon": {
-          "light": "assets/reveal-spark.svg",
-          "dark": "assets/reveal-spark.svg"
+          "light": "assets/mascot-icon.png",
+          "dark": "assets/mascot-icon.png"
         }
       },
       {
@@ -345,7 +345,7 @@
     "url": "https://github.com/yurykoretskiy/claude-sessions-viewer.git"
   },
   "homepage": "https://github.com/yurykoretskiy/claude-sessions-viewer#readme",
-  "icon": "assets/icon.png",
+  "icon": "assets/mascot-icon.png",
   "keywords": [
     "claude",
     "claude-code",

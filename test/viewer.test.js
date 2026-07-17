@@ -193,6 +193,8 @@ test('generated HTML uses the approved speaker palettes and keeps orange as the 
   assert.match(html, /--user-bub:#e8f0f5; --user-edge:#5b7c8f; --user-strong:#456579/);
   assert.match(html, /--agent-bub:#ececf7; --agent-edge:#6865a5; --agent-strong:#55518f/);
   assert.match(html, /--claude-spark:#d97757/);
+  assert.match(html, /"mascotUri":"mascot\.png"/, 'viewer exposes the mascot to rendered Claude messages');
+  assert.match(html, /escAttr\(DATA\.mascotUri\)/, 'Claude role marker uses the mascot image');
   assert.match(html, /\.msg\.assistant \{[^}]*border-left:3px solid var\(--agent-edge\)/);
   assert.match(html, /\.msg\.user \{[^}]*border-right:3px solid var\(--user-edge\)/);
   assert.match(html, /\.msg\.assistant \.role-icon \{ color:var\(--claude-spark\); \}/);

@@ -61,10 +61,11 @@ class ConversationViewer {
       const convo = await extractConversation(session.file);
       const panel = vscode.window.createWebviewPanel(
         'claudeSessionsViewer.conversation',
-        `✳ ${title}`,
+        title,
         opts.beside ? vscode.ViewColumn.Beside : vscode.ViewColumn.One,
         { enableScripts: true, retainContextWhenHidden: true }
       );
+      panel.iconPath = vscode.Uri.joinPath(this.context.extensionUri, 'assets', 'mascot-icon.png');
       const entry = { panel, convo, session, title, folder: folderLabel };
       this.panels.set(session.id, entry);
 
@@ -207,6 +208,11 @@ class ConversationViewer {
     const { session, convo, title, folder } = entry;
     const cfg = this.config;
     const nonce = Math.random().toString(36).slice(2);
+    const webview = entry.panel && entry.panel.webview;
+    const mascotUri = webview && typeof webview.asWebviewUri === 'function'
+      ? webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'assets', 'mascot.png')).toString()
+      : 'mascot.png';
+    const imageSource = webview && webview.cspSource ? webview.cspSource : "'self'";
     const data = JSON.stringify({
       find,
       messages: convo.messages,
@@ -221,6 +227,7 @@ class ConversationViewer {
       sessionId: session.id,
       rawPath: session.file,
       cwd: session.cwd,
+      mascotUri,
     }).replace(/</g, '\\u003c');
     const nMsgs = convo.messages.filter((m) => m.role !== 'tool').length;
 
@@ -228,7 +235,7 @@ class ConversationViewer {
 <html>
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${imageSource}; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <style>
   html { height:100%; overflow:hidden; }
   body { --claude-spark:#d97757; margin:0;
@@ -329,7 +336,9 @@ class ConversationViewer {
   .msg.user { margin-left:auto; background:var(--user-bub); border-right:3px solid var(--user-edge); border-bottom-right-radius:4px; }
   .msg.assistant { margin-right:auto; background:var(--agent-bub); border-left:3px solid var(--agent-edge); border-bottom-left-radius:4px; }
   .who { font-size:11px; color:var(--mut); margin-bottom:3px; letter-spacing:.02em; font-weight:700; text-transform:uppercase; }
-  .role-icon { display:inline-block; margin-right:4px; font-size:12px; line-height:1; vertical-align:-1px; }
+  .role-icon { display:inline-flex; align-items:center; justify-content:center; margin-right:4px;
+    width:14px; height:14px; font-size:12px; line-height:1; vertical-align:-2px; }
+  .role-icon img { display:block; width:16px; height:12px; object-fit:contain; }
   .msg.assistant .role-icon { color:var(--claude-spark); }
   .msg.user .role-icon { color:var(--user-edge); }
   body[data-names="off"] .who { display:none; }
@@ -398,6 +407,7 @@ class ConversationViewer {
     display:flex; align-items:center; justify-content:center; z-index:7; }
   .bottom-spacer { height:176px; flex:0 0 auto; }
   .empty { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--mut); gap:6px; }
+  .empty-mascot { width:92px; height:64px; object-fit:contain; opacity:.9; }
   @media (max-width:620px) {
     .chat { padding-right:46px; }
     .msg { max-width:86%; }
@@ -709,7 +719,7 @@ function render(keepScroll) {
   chat.innerHTML = '';
   const msgs = DATA.messages;
   if (!msgs.some(m => m.role !== 'tool')) {
-    chat.innerHTML = '<div class="empty"><div style="font-size:26px;color:var(--claude-spark);opacity:.7">✳</div>' +
+    chat.innerHTML = '<div class="empty"><img class="empty-mascot" src="' + escAttr(DATA.mascotUri) + '" alt="">' +
       '<div>No readable conversation in this transcript</div>' +
       '<div style="font-size:11.5px">Open raw JSON for transcript internals.</div></div>';
     return;
@@ -751,7 +761,9 @@ function render(keepScroll) {
     const day = dayOf(msgs[g0].ts);
     if (day && day !== lastDay && filter === 'all') { frag.push('<div class="day">' + day + '</div>'); lastDay = day; }
     const who = g.role === 'user' ? l.user : l.agent;
-    const icon = g.role === 'user' ? '●' : '✳';
+    const icon = g.role === 'user'
+      ? '●'
+      : '<img src="' + escAttr(DATA.mascotUri) + '" alt="">';
     const folded = isFolded(g0);
     const parts = g.indices.map(idx => {
       const m = msgs[idx];
