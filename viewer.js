@@ -6,8 +6,8 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { fileURLToPath } = require('url');
-const { extractConversation, computeModelRuns } = require('./conversation');
-const { SEARCH_SVG, MODEL_SVG } = require('./icons');
+const { extractConversation, conversationToText, computeModelRuns } = require('./conversation');
+const { SEARCH_SVG, MODEL_SVG, COPY_SVG } = require('./icons');
 
 const RENDER_WINDOW = 200; // big sessions: render latest N first, "render all" banner
 
@@ -37,7 +37,6 @@ class ConversationViewer {
       agentLabel: c.get('agentLabel', 'CLAUDE'),
       showNames: c.get('showNames', true),
       liveRefresh: c.get('liveRefresh.enabled', false),
-      viewerDensity: c.get('viewerDensity', 'short'),
       shortPreviewLines: c.get('shortPreviewLines', 4),
     };
   }
@@ -99,6 +98,7 @@ class ConversationViewer {
 
   async onMessage(entry, msg) {
     const { session, convo, title, folder } = entry;
+    const cfg = this.config;
     switch (msg.type) {
       case 'resume': {
         if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session.id)) {
@@ -110,6 +110,20 @@ class ConversationViewer {
         terminal.sendText(`claude --resume ${session.id}`, true);
         break;
       }
+      case 'copy':
+        await vscode.env.clipboard.writeText(conversationToText(convo, {
+          title,
+          folder,
+          userLabel: cfg.userLabel,
+          agentLabel: cfg.agentLabel,
+          names: cfg.showNames,
+          filter: 'all',
+          withTools: false,
+        }));
+        vscode.window.showInformationMessage(
+          `Copied entire conversation (${convo.messages.filter((m) => m.role !== 'tool').length} messages)`
+        );
+        break;
       case 'openLink': {
         const href = String(msg.href || '').trim();
         if (!href) break;
@@ -149,8 +163,13 @@ class ConversationViewer {
       }
       case 'setConfig': {
         const c = vscode.workspace.getConfiguration('claudeSessionsViewer');
-        if (msg.viewerDensity === 'full' || msg.viewerDensity === 'short')
-          await c.update('viewerDensity', msg.viewerDensity, vscode.ConfigurationTarget.Global);
+        if (msg.theme) await c.update('theme', msg.theme, vscode.ConfigurationTarget.Global);
+        if (msg.userLabel !== undefined)
+          await c.update('userLabel', msg.userLabel || 'USER', vscode.ConfigurationTarget.Global);
+        if (msg.agentLabel !== undefined)
+          await c.update('agentLabel', msg.agentLabel || 'CLAUDE', vscode.ConfigurationTarget.Global);
+        if (msg.showNames !== undefined)
+          await c.update('showNames', !!msg.showNames, vscode.ConfigurationTarget.Global);
         break;
       }
     }
@@ -173,7 +192,6 @@ class ConversationViewer {
       agentLabel: cfg.agentLabel,
       showNames: cfg.showNames,
       theme: cfg.theme,
-      density: cfg.viewerDensity === 'full' ? 'full' : 'short',
       foldLines: Math.max(1, Math.min(30, Number(cfg.shortPreviewLines) || 4)),
       window: RENDER_WINDOW,
       sessionId: session.id,
@@ -240,6 +258,17 @@ class ConversationViewer {
   .seg:last-child { border-right:none; }
   .seg.on { background:var(--btn2); color:var(--fg); }
   .spacer { flex:1 1 auto; }
+  .settingsmenu { position:absolute; top:100%; left:14px; margin-top:6px; background:var(--panel); border:1px solid var(--line);
+    border-radius:10px; padding:8px; font-size:12px; z-index:20; display:none; width:250px;
+    box-shadow:0 8px 28px rgba(0,0,0,.16); }
+  .settingsmenu.open { display:block; }
+  .settings-title { color:var(--mut); font-size:11px; text-transform:uppercase; letter-spacing:.04em; padding:4px 8px 2px; }
+  .settings-row { display:flex; align-items:center; gap:8px; margin:6px 8px; }
+  .settings-row .lbl { color:var(--mut); width:56px; flex-shrink:0; }
+  .settings-row .opt { border:1px solid var(--line); border-radius:9px; padding:0 9px; cursor:pointer; color:var(--mut); }
+  .settings-row .opt.on { border-color:var(--agent-strong); color:var(--agent-strong); }
+  .settings-row input[type=text] { background:var(--bg); border:1px solid var(--line); color:var(--fg);
+    border-radius:6px; padding:4px 7px; min-width:0; flex:1; font-size:12px; }
   .searchbar { display:none; grid-template-columns:1fr auto auto auto auto; align-items:center; gap:7px;
     padding:8px 16px; border-bottom:1px solid var(--line); flex-shrink:0; z-index:4; }
   .searchbar.open { display:grid; }
@@ -351,7 +380,7 @@ class ConversationViewer {
   }
 </style>
 </head>
-<body class="sys" data-names="${cfg.showNames ? 'on' : 'off'}" data-density="${cfg.viewerDensity === 'full' ? 'full' : 'short'}" style="--fold-lines:${Math.max(1, Math.min(30, Number(cfg.shortPreviewLines) || 4))}">
+<body class="sys" data-names="${cfg.showNames ? 'on' : 'off'}" style="--fold-lines:${Math.max(1, Math.min(30, Number(cfg.shortPreviewLines) || 4))}">
 <main class="viewer">
   <div class="vhead">
     <div class="vrow">
@@ -361,15 +390,21 @@ class ConversationViewer {
     <div class="meta" id="meta">${esc(folder)} · ${nMsgs} messages · ${esc(session.id)} · ${fmt(convo.firstTs)} → ${fmt(convo.lastTs)}</div>
   </div>
   <div class="controls">
+    <button class="ibtn" id="settingsBtn" aria-label="Viewer settings" data-tip="Viewer settings">⋯</button>
+    <div class="settingsmenu" id="settingsMenu">
+      <div class="settings-title">Labels &amp; theme</div>
+      <div class="settings-row"><label><input type="checkbox" id="showNames"${cfg.showNames ? ' checked' : ''}> Show names</label></div>
+      <div class="settings-row"><span class="lbl">You</span><input type="text" id="userLabel"></div>
+      <div class="settings-row"><span class="lbl">Agent</span><input type="text" id="agentLabel"></div>
+      <div class="settings-row"><span class="lbl">Theme</span>
+        <span class="opt" data-th="system">System</span><span class="opt" data-th="light">Light</span><span class="opt" data-th="dark">Dark</span></div>
+    </div>
     <div class="segmented" id="filterSeg">
       <button class="seg on" data-f="all">All</button>
       <button class="seg" data-f="assistant" id="chipAgent">${esc(cfg.agentLabel)}</button>
       <button class="seg" data-f="user" id="chipUser">${esc(cfg.userLabel)}</button>
     </div>
-    <div class="segmented" id="densitySeg">
-      <button class="seg${cfg.viewerDensity === 'full' ? '' : ' on'}" data-d="short">Short</button>
-      <button class="seg${cfg.viewerDensity === 'full' ? ' on' : ''}" data-d="full">Full</button>
-    </div>
+    <button class="ibtn" id="copyConversation" aria-label="Copy whole conversation" data-tip="Copy whole conversation">${COPY_SVG}</button>
     <span class="spacer"></span>
     <button class="ibtn" id="modelToggle" aria-label="Model lane" data-tip="Which model handled what">${MODEL_SVG}</button>
     <button class="ibtn" id="searchToggle" aria-label="Search" data-tip="Search">${SEARCH_SVG}</button>
@@ -397,16 +432,15 @@ const DATA = ${data};
 // is wasted work, so cap the source text generously relative to the preview.
 const FOLDED_RENDER_CAP = Math.max(1200, (DATA.foldLines || 4) * 160);
 let filter = 'all';
-let density = DATA.density === 'full' ? 'full' : 'short';
 let renderAll = DATA.messages.length <= DATA.window * 1.2;
 let currentMatch = 0;
 let matches = [];
 let scrollTimer = 0;
-// Bubble ids whose fold state differs from the mode default
-// (Short: default folded, Full: default unfolded). Cleared on mode switch.
+// Bubble ids manually folded by the reader. Long messages remain expanded by
+// default; the existing per-bubble chevron is the only folding control.
 const overrides = new Set();
 const toggleFold = (i) => { if (overrides.has(i)) overrides.delete(i); else overrides.add(i); };
-const isFolded = (i) => (density === 'short') !== overrides.has(i);
+const isFolded = (i) => overrides.has(i);
 const $ = id => document.getElementById(id);
 const escHtml = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
@@ -655,13 +689,12 @@ function render(keepScroll) {
     else groups.push({ role: m.role, indices: [i] });
     groupOf[i] = groups[groups.length - 1].indices[0];
   }
-  // Bubbles containing search matches must be readable: force-unfold them
-  // (in Short by overriding, in Full by removing a manual fold override).
+  // Bubbles containing search matches must be readable: force-unfold them.
   if ($('search').value.trim())
     matches.forEach(i => {
       const g = groupOf[i];
       if (g === undefined) return;
-      if (density === 'short') overrides.add(g); else overrides.delete(g);
+      overrides.delete(g);
     });
   let lastDay = null;
   const frag = [];
@@ -827,6 +860,13 @@ window.addEventListener('message', e => {
 });
 
 $('resume').onclick = () => vscodeApi.postMessage({ type:'resume' });
+$('copyConversation').onclick = () => vscodeApi.postMessage({ type:'copy' });
+$('settingsBtn').onclick = () => $('settingsMenu').classList.toggle('open');
+document.addEventListener('click', e => {
+  if (!$('settingsMenu').classList.contains('open')) return;
+  if ($('settingsBtn') === e.target || $('settingsMenu').contains(e.target)) return;
+  $('settingsMenu').classList.remove('open');
+});
 $('searchToggle').onclick = () => {
   $('searchbar').classList.toggle('open');
   $('searchToggle').classList.toggle('open', $('searchbar').classList.contains('open'));
@@ -838,6 +878,23 @@ $('modelToggle').onclick = () => {
 };
 renderModelStrip();
 $('jump').onclick = () => { $('chat').scrollTop = $('chat').scrollHeight; updateRail(); };
+$('showNames').onchange = e => {
+  document.body.dataset.names = e.target.checked ? 'on' : 'off';
+  vscodeApi.postMessage({ type:'setConfig', showNames: e.target.checked });
+};
+$('userLabel').value = DATA.userLabel;
+$('agentLabel').value = DATA.agentLabel;
+$('userLabel').oninput = () => { render(true); vscodeApi.postMessage({ type:'setConfig', userLabel: $('userLabel').value }); };
+$('agentLabel').oninput = () => { render(true); vscodeApi.postMessage({ type:'setConfig', agentLabel: $('agentLabel').value }); };
+document.querySelectorAll('[data-th]').forEach(b => {
+  if (b.dataset.th === DATA.theme) b.classList.add('on');
+  b.onclick = () => {
+    document.querySelectorAll('[data-th]').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    document.body.className = b.dataset.th === 'system' ? 'sys' : b.dataset.th;
+    vscodeApi.postMessage({ type:'setConfig', theme: b.dataset.th });
+  };
+});
 $('search').oninput = () => {
   currentMatch = 0;
   if (!$('search').value.trim()) overrides.clear();
@@ -856,16 +913,6 @@ $('clearSearch').onclick = () => {
     $('searchToggle').classList.remove('open');
   }
 };
-document.querySelectorAll('[data-d]').forEach(b => b.onclick = () => {
-  if (b.dataset.d === density) return;
-  document.querySelectorAll('[data-d]').forEach(x => x.classList.remove('on'));
-  b.classList.add('on');
-  density = b.dataset.d;
-  document.body.dataset.density = density;
-  overrides.clear();
-  vscodeApi.postMessage({ type:'setConfig', viewerDensity: density });
-  render(true);
-});
 document.querySelectorAll('[data-f]').forEach(b => b.onclick = () => {
   document.querySelectorAll('[data-f]').forEach(x => x.classList.remove('on'));
   b.classList.add('on'); filter = b.dataset.f; currentMatch = 0; render(true);

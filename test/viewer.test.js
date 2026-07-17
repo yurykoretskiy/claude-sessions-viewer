@@ -149,7 +149,7 @@ test('generated webview script is valid JavaScript', () => {
   assert.doesNotThrow(() => new vm.Script(script[1]));
 });
 
-test('generated HTML contains the Short/Full toggle and line-clamp CSS, no scan-row markup', () => {
+test('generated HTML uses one viewer mode with manual folding and no density toggle', () => {
   const viewer = new ConversationViewer({});
   const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };
   const html = viewer.html({
@@ -162,13 +162,14 @@ test('generated HTML contains the Short/Full toggle and line-clamp CSS, no scan-
     title: 'T',
     folder: 'F',
   });
-  assert.match(html, /data-d="short"/);
-  assert.match(html, /data-d="full"/);
+  assert.doesNotMatch(html, /data-d="short"|data-d="full"/);
   assert.match(html, /-webkit-line-clamp:var\(--fold-lines, 4\)/);
   assert.match(html, /max-height:calc\(var\(--fold-lines, 4\) \* 1\.52em\)/,
     'hard height cap so folded code blocks stay clamped');
-  assert.match(html, /data-density="short"/, 'default density is short');
   assert.match(html, /--fold-lines:4/, 'default preview length is 4 lines');
+  assert.match(html, /const isFolded = \(i\) => overrides\.has\(i\)/, 'folding stays per message');
+  assert.match(html, /id="settingsBtn"/);
+  assert.match(html, /id="copyConversation"/);
   assert.doesNotMatch(html, /\.row-text/);
   assert.doesNotMatch(html, /\.row-time/);
   assert.doesNotMatch(html, /id="moreBtn"|id="moreMenu"|mmCopy|mmExport|mmCopyPath|mmReveal/,
@@ -211,7 +212,6 @@ test('filter chips use the configured names in All, Agent, User order without fo
       agentLabel: 'Clone',
       showNames: true,
       theme: 'system',
-      viewerDensity: 'short',
     }[key] ?? fallback),
   });
   try {
@@ -325,7 +325,7 @@ test('a <script> payload inside message text renders escaped, not as a live tag'
   assert.match(html, /\\u003cscript>alert\(1\)\\u003c\/script>/);
 });
 
-test('setConfig persists viewerDensity full/short, ignores scan/read/bogus', async () => {
+test('viewer settings persist labels, names, and theme', async () => {
   const viewer = new ConversationViewer({});
   const updates = [];
   const origGetConfiguration = fakeVscode.workspace.getConfiguration;
@@ -337,18 +337,13 @@ test('setConfig persists viewerDensity full/short, ignores scan/read/bogus', asy
     const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };
     const entry = { session, convo: { messages: [] }, title: 'T', folder: 'F' };
 
-    await viewer.onMessage(entry, { type: 'setConfig', viewerDensity: 'short' });
-    assert.deepStrictEqual(updates.find((u) => u[0] === 'viewerDensity'), ['viewerDensity', 'short']);
-
-    updates.length = 0;
-    await viewer.onMessage(entry, { type: 'setConfig', viewerDensity: 'full' });
-    assert.deepStrictEqual(updates.find((u) => u[0] === 'viewerDensity'), ['viewerDensity', 'full']);
-
-    for (const rejected of ['scan', 'read', 'bogus']) {
-      updates.length = 0;
-      await viewer.onMessage(entry, { type: 'setConfig', viewerDensity: rejected });
-      assert.strictEqual(updates.find((u) => u[0] === 'viewerDensity'), undefined, `should ignore '${rejected}'`);
-    }
+    await viewer.onMessage(entry, { type: 'setConfig', userLabel: 'Yury', agentLabel: 'Claude', showNames: false, theme: 'dark' });
+    assert.deepStrictEqual(updates, [
+      ['theme', 'dark'],
+      ['userLabel', 'Yury'],
+      ['agentLabel', 'Claude'],
+      ['showNames', false],
+    ]);
   } finally {
     fakeVscode.workspace.getConfiguration = origGetConfiguration;
   }
