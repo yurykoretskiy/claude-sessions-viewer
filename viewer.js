@@ -142,7 +142,7 @@ class ConversationViewer {
       panel.iconPath = vscode.Uri.joinPath(
         this.context.extensionUri,
         'assets',
-        session.source === 'codex' ? 'codex-logo.svg' : 'mascot-icon.png'
+        session.source === 'codex' ? 'codex-logo.svg' : 'icon.svg'
       );
       const entry = { panel, convo, session, title, folder: folderLabel };
       this.panels.set(panelKey, entry);

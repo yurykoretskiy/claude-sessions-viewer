@@ -2,7 +2,7 @@
   "name": "claude-sessions-viewer",
   "displayName": "Session Viewer",
   "description": "Browse Claude Code and Codex sessions together by date or project folder. Read-only, local, zero dependencies.",
-  "version": "1.20.3",
+  "version": "1.20.4",
   "publisher": "yurykoretskiy",
   "license": "MIT",
   "engines": {
