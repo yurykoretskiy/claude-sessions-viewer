@@ -2,7 +2,7 @@
   "name": "claude-sessions-viewer",
   "displayName": "Session Viewer",
   "description": "Browse Claude Code and Codex sessions together by date or project folder. Read-only, local, zero dependencies.",
-  "version": "1.20.2",
+  "version": "1.20.3",
   "publisher": "yurykoretskiy",
   "license": "MIT",
   "engines": {
@@ -37,7 +37,7 @@
         {
           "id": "claudeSessions",
           "title": "Session Viewer",
-          "icon": "assets/mascot-prominent.png"
+          "icon": "assets/icon.svg"
         }
       ]
     },
@@ -168,8 +168,8 @@
         "id": "claudeSessions.openTargets",
         "label": "Session Viewer: Open session",
         "icon": {
-          "light": "assets/mascot-prominent.png",
-          "dark": "assets/mascot-prominent.png"
+          "light": "assets/reveal-spark.svg",
+          "dark": "assets/reveal-spark.svg"
         }
       }
     ],

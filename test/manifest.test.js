@@ -47,11 +47,11 @@ test('tree action glyphs use padded local assets so the current shapes read ligh
   }
 });
 
-test('the prominent mascot is limited to the Activity Bar and reveal action', () => {
-  assert.strictEqual(manifest.contributes.viewsContainers.activitybar[0].icon, 'assets/mascot-prominent.png');
-  const reveal = manifest.contributes.commands.find((item) => item.command === 'claudeSessions.revealCurrent');
-  assert.strictEqual(reveal.icon.light, 'assets/mascot-prominent.png');
-  assert.strictEqual(reveal.icon.dark, 'assets/mascot-prominent.png');
+test('the Activity Bar and toolbar dropdown use the pre-mascot spark icons', () => {
+  assert.strictEqual(manifest.contributes.viewsContainers.activitybar[0].icon, 'assets/icon.svg');
+  const submenu = manifest.contributes.submenus.find((item) => item.id === 'claudeSessions.openTargets');
+  assert.strictEqual(submenu.icon.light, 'assets/reveal-spark.svg');
+  assert.strictEqual(submenu.icon.dark, 'assets/reveal-spark.svg');
 });
 
 test('Claude Code action uses the official Claude logo asset', () => {
