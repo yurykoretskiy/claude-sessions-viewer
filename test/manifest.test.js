@@ -4,18 +4,34 @@ const fs = require('node:fs');
 const path = require('node:path');
 const manifest = require('../package.json');
 
-test('tree exposes exactly four explicit session-row actions', () => {
-  const sessionActions = manifest.contributes.menus['view/item/context']
-    .filter((item) => item.when.includes('viewItem == session') && String(item.group).startsWith('inline'))
-    .sort((a, b) => a.group.localeCompare(b.group))
-    .map((item) => item.command);
+test('main sessions surface is a webview with no native tree toolbars or row menus', () => {
+  const view = manifest.contributes.views.claudeSessions[0];
+  assert.strictEqual(view.id, 'claudeSessions.tree');
+  assert.strictEqual(view.type, 'webview');
+  assert.strictEqual(manifest.contributes.menus['view/title'], undefined);
+  assert.strictEqual(manifest.contributes.menus['view/item/context'], undefined);
+});
 
-  assert.deepStrictEqual(sessionActions, [
-    'claudeSessions.openConversation',
-    'claudeSessions.openInClaudeCode',
-    'claudeSessions.resume',
-    'claudeSessions.copySessionPath',
+test('Explorer folders retain modular Claude Code and terminal actions', () => {
+  const folderActions = manifest.contributes.menus['explorer/context']
+    .sort((a, b) => a.group.localeCompare(b.group));
+
+  assert.deepStrictEqual(folderActions.map((item) => item.command), [
+    'claudeSessions.newClaudeCodeHere',
+    'claudeSessions.newHere',
   ]);
+  assert.ok(folderActions[0].when.includes('folderActions.claudeCode.enabled'));
+  assert.ok(folderActions[1].when.includes('folderActions.terminal.enabled'));
+
+  const commands = manifest.contributes.commands;
+  const claudeAction = commands.find((item) => item.command === 'claudeSessions.newClaudeCodeHere');
+  const terminalAction = commands.find((item) => item.command === 'claudeSessions.newHere');
+  assert.deepStrictEqual(claudeAction.icon, commands.find((item) => item.command === 'claudeSessions.openInClaudeCode').icon);
+  assert.deepStrictEqual(terminalAction.icon, commands.find((item) => item.command === 'claudeSessions.resume').icon);
+
+  const treeSettings = manifest.contributes.configuration.find((group) => group.title === 'Session Viewer Sources').properties;
+  assert.strictEqual(treeSettings['claudeSessionsViewer.folderActions.claudeCode.enabled'].default, true);
+  assert.strictEqual(treeSettings['claudeSessionsViewer.folderActions.terminal.enabled'].default, true);
 });
 
 test('tree action glyphs use padded local assets so the current shapes read lighter', () => {

@@ -1,8 +1,8 @@
 {
   "name": "claude-sessions-viewer",
-  "displayName": "Claude Sessions Viewer",
-  "description": "Read Claude Code sessions like chat: locate current work, review history, export Markdown. Read-only, local, zero dependencies.",
-  "version": "1.18.12",
+  "displayName": "Session Viewer",
+  "description": "Browse Claude Code and Codex sessions together by date or project folder. Read-only, local, zero dependencies.",
+  "version": "1.20.1",
   "publisher": "yurykoretskiy",
   "license": "MIT",
   "engines": {
@@ -36,7 +36,7 @@
       "activitybar": [
         {
           "id": "claudeSessions",
-          "title": "Claude Sessions",
+          "title": "Session Viewer",
           "icon": "assets/mascot-prominent.png"
         }
       ]
@@ -45,14 +45,15 @@
       "claudeSessions": [
         {
           "id": "claudeSessions.tree",
-          "name": "Sessions by Folder"
+          "name": "Sessions",
+          "type": "webview"
         }
       ]
     },
     "commands": [
       {
         "command": "claudeSessions.revealCurrent",
-        "title": "Claude Sessions: Reveal current session",
+        "title": "Session Viewer: Reveal current Claude session",
         "icon": {
           "light": "assets/mascot-prominent.png",
           "dark": "assets/mascot-prominent.png"
@@ -60,8 +61,19 @@
       },
       {
         "command": "claudeSessions.newHere",
-        "title": "New session here",
-        "icon": "$(add)"
+        "title": "New Claude terminal session here",
+        "icon": {
+          "light": "assets/tree-terminal-light.svg",
+          "dark": "assets/tree-terminal-dark.svg"
+        }
+      },
+      {
+        "command": "claudeSessions.newClaudeCodeHere",
+        "title": "New Claude Code session here",
+        "icon": {
+          "light": "assets/claude-code-logo-light.svg",
+          "dark": "assets/claude-code-logo-dark.svg"
+        }
       },
       {
         "command": "claudeSessions.newWindowHere",
@@ -108,7 +120,7 @@
       },
       {
         "command": "claudeSessions.refresh",
-        "title": "Claude Sessions: Refresh",
+        "title": "Session Viewer: Refresh",
         "icon": "$(refresh)"
       },
       {
@@ -131,89 +143,41 @@
       },
       {
         "command": "claudeSessions.openSettings",
-        "title": "Claude Sessions: Open Settings",
+        "title": "Session Viewer: Open Settings",
         "icon": "$(gear)"
+      },
+      {
+        "command": "claudeSessions.openTabInMessenger",
+        "category": "Session Viewer",
+        "title": "Open this session in Messenger view"
+      },
+      {
+        "command": "claudeSessions.openTabInPreview",
+        "category": "Session Viewer",
+        "title": "Open this session in preview"
+      },
+      {
+        "command": "claudeSessions.openRowInMessenger",
+        "category": "Session Viewer",
+        "title": "Open this session in Messenger view"
+      },
+      {
+        "command": "claudeSessions.openRowInPreview",
+        "category": "Session Viewer",
+        "title": "Open this session in preview"
       }
     ],
     "menus": {
       "explorer/context": [
         {
           "command": "claudeSessions.newHere",
-          "when": "explorerResourceIsFolder",
-          "group": "2_workspace@98"
-        },
-        {
-          "command": "claudeSessions.newWindowHere",
-          "when": "explorerResourceIsFolder",
+          "when": "explorerResourceIsFolder && config.claudeSessionsViewer.folderActions.terminal.enabled",
           "group": "2_workspace@99"
-        }
-      ],
-      "view/title": [
-        {
-          "command": "claudeSessions.toggleGrouping",
-          "when": "view == claudeSessions.tree && claudeSessions.mode == 'folders' && claudeSessions.timelineEnabled",
-          "group": "navigation@0"
         },
         {
-          "command": "claudeSessions.toggleGroupingAlt",
-          "when": "view == claudeSessions.tree && claudeSessions.mode == 'chronological' && claudeSessions.timelineEnabled",
-          "group": "navigation@0"
-        },
-        {
-          "command": "claudeSessions.expandAll",
-          "when": "view == claudeSessions.tree && !claudeSessions.expandedAll && claudeSessions.mode == 'folders'",
-          "group": "navigation@1"
-        },
-        {
-          "command": "claudeSessions.collapseAll",
-          "when": "view == claudeSessions.tree && claudeSessions.expandedAll && claudeSessions.mode == 'folders'",
-          "group": "navigation@1"
-        },
-        {
-          "command": "claudeSessions.refresh",
-          "when": "view == claudeSessions.tree",
-          "group": "navigation@2"
-        },
-        {
-          "command": "claudeSessions.openSettings",
-          "when": "view == claudeSessions.tree",
-          "group": "navigation@3"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "claudeSessions.newHere",
-          "when": "view == claudeSessions.tree && viewItem == folder",
-          "group": "inline"
-        },
-        {
-          "command": "claudeSessions.newWindowHere",
-          "when": "view == claudeSessions.tree && viewItem == folder"
-        },
-        {
-          "command": "claudeSessions.openConversation",
-          "when": "view == claudeSessions.tree && viewItem == session",
-          "group": "inline@1"
-        },
-        {
-          "command": "claudeSessions.openInClaudeCode",
-          "when": "view == claudeSessions.tree && viewItem == session",
-          "group": "inline@2"
-        },
-        {
-          "command": "claudeSessions.resume",
-          "when": "view == claudeSessions.tree && viewItem == session",
-          "group": "inline@3"
-        },
-        {
-          "command": "claudeSessions.copySessionPath",
-          "when": "view == claudeSessions.tree && viewItem == session",
-          "group": "inline@4"
-        },
-        {
-          "command": "claudeSessions.showInFolders",
-          "when": "view == claudeSessions.tree && viewItem == session && claudeSessions.mode == 'chronological'",
-          "group": "1_actions@1"
+          "command": "claudeSessions.newClaudeCodeHere",
+          "when": "explorerResourceIsFolder && config.claudeSessionsViewer.folderActions.claudeCode.enabled",
+          "group": "2_workspace@98"
         }
       ],
       "editor/title": [
@@ -222,11 +186,35 @@
           "when": "activeWebviewPanelId == 'claudeVSCodePanel' && config.claudeSessionsViewer.reveal.enabled",
           "group": "navigation@1"
         }
+      ],
+      "editor/title/context": [
+        {
+          "command": "claudeSessions.openTabInMessenger",
+          "when": "activeWebviewPanelId == 'claudeVSCodePanel'",
+          "group": "sessionViewer@1"
+        },
+        {
+          "command": "claudeSessions.openTabInPreview",
+          "when": "activeWebviewPanelId == 'claudeVSCodePanel'",
+          "group": "sessionViewer@2"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "claudeSessions.openRowInMessenger",
+          "when": "webviewSection == 'session'",
+          "group": "sessionViewer@1"
+        },
+        {
+          "command": "claudeSessions.openRowInPreview",
+          "when": "webviewSection == 'session'",
+          "group": "sessionViewer@2"
+        }
       ]
     },
     "configuration": [
       {
-        "title": "Claude Sessions Viewer",
+        "title": "Session Viewer",
         "order": 1,
         "properties": {
           "claudeSessionsViewer.reveal.enabled": {
@@ -241,12 +229,12 @@
             "default": true,
             "order": 2,
             "scope": "window",
-            "markdownDescription": "When you reveal the current session, also open its **read-only conversation** beside the editor.\n\n- On (default): great for exploring — reveal shows the chat.\n- Off: reveal only highlights the session in the tree."
+            "markdownDescription": "When you reveal the current Claude session, also open its **read-only conversation** beside the editor.\n\n- On (default): reveal also opens the chat.\n- Off: reveal only selects the session in Session Viewer."
           }
         }
       },
       {
-        "title": "Claude Sessions Viewer",
+        "title": "Session Viewer",
         "order": 2,
         "properties": {
           "claudeSessionsViewer.theme": {
@@ -275,12 +263,12 @@
           },
           "claudeSessionsViewer.shortPreviewLines": {
             "type": "number",
-            "default": 10,
+            "default": 14,
             "minimum": 1,
             "maximum": 30,
             "order": 3,
             "scope": "window",
-            "markdownDescription": "How many lines a manually folded message shows as its preview."
+            "markdownDescription": "How many lines a folded Claude message shows. User prompts stay compact at 4 lines."
           },
           "claudeSessionsViewer.userLabel": {
             "type": "string",
@@ -299,29 +287,29 @@
         }
       },
       {
-        "title": "Sessions Tree",
+        "title": "Session Viewer Sources",
         "order": 3,
         "properties": {
-          "claudeSessionsViewer.promptChildren.enabled": {
-            "type": "boolean",
-            "default": false,
-            "order": 1,
-            "scope": "window",
-            "markdownDescription": "Show your prompt/message preview rows **under each session** in the tree. Off by default for faster, session-level browsing."
-          },
           "claudeSessionsViewer.showAutomationSessions": {
             "type": "boolean",
             "default": false,
             "order": 2,
             "scope": "window",
-            "markdownDescription": "Also show **automation sessions** — transcripts created by SDK runs such as `/security-review` and background agents, not conversations you had. Off by default: the tree then matches the sessions the official Claude Code panel shows."
+            "markdownDescription": "Also show Claude **automation sessions** created by SDK runs and background agents. Codex subagent sidechains stay excluded."
           },
-          "claudeSessionsViewer.timeline.enabled": {
+          "claudeSessionsViewer.folderActions.claudeCode.enabled": {
             "type": "boolean",
-            "default": false,
-            "order": 3,
+            "default": true,
+            "order": 4,
             "scope": "window",
-            "markdownDescription": "Show the experimental **Session Timeline** toggle. Off by default while the flat view is being redesigned for a clearer two-column layout."
+            "markdownDescription": "Show the hover action on folder rows that starts a **new conversation in the official Claude Code VS Code extension**. It reuses the current window when that folder is already open; otherwise it opens the folder in a new window."
+          },
+          "claudeSessionsViewer.folderActions.terminal.enabled": {
+            "type": "boolean",
+            "default": true,
+            "order": 5,
+            "scope": "window",
+            "markdownDescription": "Show the hover action on folder rows that opens a **new terminal session** rooted in that folder and runs `claude`."
           }
         }
       }

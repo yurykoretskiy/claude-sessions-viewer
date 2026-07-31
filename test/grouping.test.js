@@ -155,7 +155,7 @@ test('timeline rows cap long titles and keep folder in the description', () => {
   assert.doesNotMatch(item.tooltip.value, /This is a very long generated session title/, 'tree title is not duplicated in tooltip');
 });
 
-test('session hover mirrors chronology and ends with compact metadata', () => {
+test('session hover presents the start and ending of a long latest message', () => {
   const p = new SessionTreeProvider(fakeContext());
   p.treeMode = 'chronological';
   const session = {
@@ -171,12 +171,31 @@ test('session hover mirrors chronology and ends with compact metadata', () => {
   const item = p.getTreeItem(p.buildTimeline([session], null)[0]);
   const text = item.tooltip.value;
 
-  assert.ok(text.indexOf('Started ·') < text.indexOf('Last message · Claude ·'));
-  assert.ok(text.indexOf('Last message · Claude ·') < text.indexOf('Saved both lessons'));
-  assert.ok(text.indexOf('Saved both lessons') < text.indexOf('Duration      ~3d (75h 8m)'));
-  assert.ok(text.indexOf('Messages      142') < text.indexOf('Session ID'));
-  assert.match(text, /…say the word when you're ready and I'll implement it\./);
+  assert.ok(text.indexOf('Last message') < text.indexOf('`START`'));
+  assert.ok(text.indexOf('`START`') < text.indexOf('Saved both lessons'));
+  assert.ok(text.indexOf('Saved both lessons') < text.indexOf('`END`'));
+  assert.ok(text.indexOf('`END`') < text.indexOf('…say the word'));
+  assert.ok(text.indexOf('…say the word') < text.indexOf('CLAUDE ·'));
+  assert.ok(text.indexOf('CLAUDE ·') < text.indexOf('Duration · ~3d (75h 8m)'));
+  assert.ok(text.indexOf('Messages · 142') < text.indexOf('Session ID ·'));
+  assert.match(text, /\.\.\./, 'long excerpts carry a visible gap marker');
+  assert.doesNotMatch(text, /Last message · Claude/);
+  assert.doesNotMatch(text, /Started ·/);
   assert.doesNotMatch(text, /First message/);
+});
+
+test('session hover keeps a short latest message as one uninterrupted excerpt', () => {
+  const p = new SessionTreeProvider(fakeContext());
+  const session = {
+    ...S('hover-short', 'claude-sessions-viewer', '2026-07-17T10:44:00.000Z'),
+    lastMessage: 'The compact message stays intact.',
+    lastMessageLength: 33,
+    lastMessageRole: 'user',
+    lastMessageTs: '2026-07-17T10:44:00.000Z',
+  };
+  const item = p.getTreeItem(p.buildTimeline([session], null)[0]);
+  assert.match(item.tooltip.value, /The compact message stays intact\./);
+  assert.doesNotMatch(item.tooltip.value, /`START`|`END`/);
 });
 
 test('view title switches between folder and timeline modes', () => {
@@ -231,8 +250,10 @@ test('live sessions use the Claude presence icon while folders stay neutral', ()
 
   const activeFolderItem = p.getTreeItem({ kind: 'folder', group: activeGroup });
   const quietFolderItem = p.getTreeItem({ kind: 'folder', group: quietGroup });
-  assert.strictEqual(activeFolderItem.iconPath.id, 'folder');
-  assert.strictEqual(quietFolderItem.iconPath.id, 'folder');
+  assert.strictEqual(activeFolderItem.iconPath.light.parts.at(-1), 'folder-tree-light.svg');
+  assert.strictEqual(activeFolderItem.iconPath.dark.parts.at(-1), 'folder-tree-dark.svg');
+  assert.strictEqual(quietFolderItem.iconPath.light.parts.at(-1), 'folder-tree-light.svg');
+  assert.strictEqual(quietFolderItem.iconPath.dark.parts.at(-1), 'folder-tree-dark.svg');
 
   const liveSessionItem = p.getTreeItem({ kind: 'session', session: live, group: activeGroup });
   const inactiveSessionItem = p.getTreeItem({ kind: 'session', session: inactive, group: quietGroup });

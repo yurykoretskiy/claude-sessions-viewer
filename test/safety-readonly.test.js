@@ -87,7 +87,7 @@ test('full pipeline never writes inside ~/.claude', async () => {
   assert.strictEqual(sessions[0].firstMessage, 'hello world');
   assert.strictEqual(sessions[0].firstMessageRole, 'user');
   assert.strictEqual(sessions[0].lastMessage, LAST_TEXT.slice(0, 180));
-  assert.strictEqual(sessions[0].lastMessageTail, LAST_TEXT.slice(-120));
+  assert.strictEqual(sessions[0].lastMessageTail, LAST_TEXT.slice(-360));
   assert.strictEqual(sessions[0].lastMessageLength, LAST_TEXT.length);
   assert.strictEqual(sessions[0].lastMessageRole, 'assistant');
   assert.strictEqual(sessions[0].messageCount, 3);

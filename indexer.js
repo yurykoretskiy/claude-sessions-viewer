@@ -11,7 +11,7 @@ const readline = require('readline');
 const PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects');
 
 // Bump when the extracted shape changes so stale cache entries re-index.
-const INDEX_VERSION = 9;
+const INDEX_VERSION = 11;
 
 const RE_TIMESTAMP = /"timestamp":"([^"]+)"/;
 const RE_CWD = /"cwd":"([^"]+)"/;
@@ -19,7 +19,9 @@ const RE_ENTRYPOINT = /"entrypoint":"([^"]+)"/;
 const MAX_PROMPTS = 300;
 const PROMPT_CHARS = 200;
 const MESSAGE_HEAD_CHARS = 180;
-const MESSAGE_TAIL_CHARS = 120;
+// The tree hover shows a compact START/END excerpt. Retaining the ending lets
+// it preserve the actual left-off state without opening the whole transcript.
+const MESSAGE_TAIL_CHARS = 360;
 // Claude can put an image and its text in one large JSONL record. Keep the
 // parser bounded per line, but do not silently drop ordinary readable turns.
 const MAX_MESSAGE_LINE = 4 * 1024 * 1024;
@@ -43,6 +45,26 @@ function messageText(content) {
     .join('\n');
 }
 
+function hasMeaningfulContent(content) {
+  if (typeof content === 'string') return content.trim().length > 0;
+  if (!Array.isArray(content)) return false;
+  return content.some((part) => part && (
+    (typeof part.text === 'string' && part.text.trim()) ||
+    part.type === 'tool_use' ||
+    part.type === 'tool_result'
+  ));
+}
+
+function activityDayKey(timestamp) {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '';
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
 async function indexSessionFile(filePath, options = {}) {
   const includePrompts = options.includePrompts !== false;
   const id = path.basename(filePath, '.jsonl');
@@ -64,10 +86,13 @@ async function indexSessionFile(filePath, options = {}) {
     lastMessageTs: null,
     messageCount: 0,
     lastTs: null,
+    activityTs: null,
+    activities: [],
     prompts: [],
   };
   let previousMessageRole = null;
   let previousMessageTs = null;
+  const activityByDayAndFolder = new Map();
 
   const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
@@ -103,11 +128,20 @@ async function indexSessionFile(filePath, options = {}) {
       try {
         const obj = JSON.parse(line);
         if ((obj.type === 'user' || obj.type === 'assistant') && obj.message && !obj.isSidechain && !obj.isMeta) {
+          const ts = typeof obj.timestamp === 'string' ? obj.timestamp : (tsMatch ? tsMatch[1] : null);
+          const activityCwd = typeof obj.cwd === 'string' ? obj.cwd : result.cwd;
+          const day = ts ? activityDayKey(ts) : '';
+          if (day && activityCwd && hasMeaningfulContent(obj.message.content)) {
+            const key = `${day}\u0000${activityCwd}`;
+            const previous = activityByDayAndFolder.get(key);
+            if (!previous || Date.parse(ts) > Date.parse(previous.ts)) {
+              activityByDayAndFolder.set(key, { ts, cwd: activityCwd });
+            }
+          }
           const text = messageText(obj.message.content);
           if (text) {
             const normalized = text.replace(/\s+/g, ' ').trim();
             const clean = normalized.slice(0, PROMPT_CHARS);
-            const ts = tsMatch ? tsMatch[1] : null;
             const sameAssistantTurn =
               obj.type === 'assistant' && previousMessageRole === 'assistant' && previousMessageTs === ts;
             if (!sameAssistantTurn) result.messageCount++;
@@ -134,6 +168,12 @@ async function indexSessionFile(filePath, options = {}) {
       } catch {}
     }
   }
+
+  result.activities = [...activityByDayAndFolder.values()]
+    .sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
+  result.activityTs = result.activities.length
+    ? result.activities[result.activities.length - 1].ts
+    : null;
 
   return result;
 }

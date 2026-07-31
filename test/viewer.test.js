@@ -48,7 +48,7 @@ Module._load = function (request, ...rest) {
   return origLoad.call(this, request, ...rest);
 };
 
-const { ConversationViewer } = require('../viewer');
+const { ConversationViewer, extractMessageOutputs } = require('../viewer');
 
 // small fixture transcript
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'csv-viewer-'));
@@ -153,6 +153,30 @@ test('copyMessage copies only the selected readable message parts', async () => 
   assert.strictEqual(lastClipboard, 'First assistant part\n\nSecond assistant part');
 });
 
+test('copyOutput copies one complete path or URL', async () => {
+  const viewer = new ConversationViewer({});
+  const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };
+  lastClipboard = null;
+  await viewer.onMessage(
+    { session, convo: { messages: [] }, title: 'T', folder: 'F' },
+    { type: 'copyOutput', value: '/tmp/demo/report.html' }
+  );
+  assert.strictEqual(lastClipboard, '/tmp/demo/report.html');
+});
+
+test('output extraction recognizes generated artifacts and ignores code files', () => {
+  const outputs = extractMessageOutputs([
+    'Done: [Conversation mockup](poc/log-view-output-mockup.html)',
+    'Sheet: https://docs.google.com/spreadsheets/d/abc123',
+    'I also changed viewer.js and package.json.',
+    'Duplicate poc/log-view-output-mockup.html',
+  ].join('\n'));
+  assert.deepStrictEqual(outputs, [
+    { kind: 'HTML', title: 'Conversation mockup', href: 'poc/log-view-output-mockup.html' },
+    { kind: 'SHEET', title: 'Google Sheets', href: 'https://docs.google.com/spreadsheets/d/abc123' },
+  ]);
+});
+
 test('generated webview script is valid JavaScript', () => {
   const viewer = new ConversationViewer({});
   const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };
@@ -185,9 +209,10 @@ test('generated HTML uses one viewer mode with manual folding and no density tog
     folder: 'F',
   });
   assert.doesNotMatch(html, /data-d="short"|data-d="full"/);
-  assert.match(html, /max-height:calc\(var\(--message-fold-lines, 10\) \* 1\.52em\)/,
+  assert.match(html, /max-height:calc\(var\(--message-fold-lines, 14\) \* 1\.55em\)/,
     'folded messages use a larger measured preview cap');
-  assert.match(html, /--fold-lines:10/, 'default preview length is 10 lines');
+  assert.match(html, /--fold-lines:14/, 'default Claude preview length is 14 lines');
+  assert.match(html, /return role === 'user' \? 4 : base/, 'user prompts stay compact at four lines');
   assert.match(html, /function syncFoldControls\(\)/, 'long messages use post-layout overflow detection');
   assert.match(html, /scrollHeight > body\.clientHeight/, 'overflow is measured from rendered content');
   assert.match(html, /mask-image:linear-gradient/, 'folded messages fade at the bottom');
@@ -199,10 +224,28 @@ test('generated HTML uses one viewer mode with manual folding and no density tog
   assert.doesNotMatch(html, /data-th=/,
     'theme stays in normal VS Code settings');
   assert.match(html, /id="copyConversation"/);
-  assert.match(html, /id="refreshViewer"/);
+  assert.match(html, /class="folder-row"[\s\S]*class="folder-label"[\s\S]*class="header-actions"[\s\S]*id="revealInTree"[\s\S]*id="openClaudeCode"[\s\S]*id="resumeTerminal"[\s\S]*id="refreshViewer"/,
+    'the folder row keeps reveal, Claude Code, terminal, and refresh actions in order');
+  assert.doesNotMatch(html, /<div class="controls">[\s\S]*id="refreshViewer"/,
+    'refresh is no longer mixed into the conversation filter row');
+  assert.match(html, /\.folder-label \{[^}]*flex:1 1 auto;[^}]*min-width:0;/,
+    'the folder name shrinks before the action group');
+  assert.match(html, /\.header-actions \{[^}]*gap:0;[^}]*flex:0 0 auto;/,
+    'header actions stay grouped and never shrink');
   assert.match(html, /type:'refresh'/);
+  assert.match(html, /id="fontDown"/);
+  assert.match(html, /id="fontUp"/);
+  assert.match(html, /setReaderScale/);
+  assert.match(html, /--reader-scale/);
+  assert.match(html, /function setFilter\(nextFilter\)/,
+    'filter changes use a stable DOM path');
+  assert.match(html, /function applyFilterVisibility\(\)/);
+  assert.match(html, /filterAnchors/);
+  assert.doesNotMatch(html, /b\.classList\.add\('on'\); filter = b\.dataset\.f; currentMatch = 0; render\(true\)/,
+    'filter changes do not rebuild the conversation');
   assert.doesNotMatch(html, /id="resume"/, 'viewer header no longer contains a terminal runner');
   assert.match(html, /class="folder-label"/);
+  assert.match(html, /folderIconUri|class="folder-label"[^>]*>\s*<img/, 'viewer header carries the folder symbol');
   assert.match(html, /footer-hidden/);
   assert.match(html, /classList\.toggle\('footer-visible'\)/);
   assert.doesNotMatch(html, /showFooter|render\(true\);\s*\n?\s*};\s*\n?\s*\$\('jump'/,
@@ -217,7 +260,30 @@ test('generated HTML uses one viewer mode with manual folding and no density tog
     'viewer keeps raw/export/copy actions out of the main surface');
 });
 
-test('generated HTML uses the approved speaker palettes and keeps orange as the Claude identity accent', () => {
+test('viewer header actions delegate to reveal, Claude Code, and terminal behavior', async () => {
+  const viewer = new ConversationViewer({});
+  const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };
+  const entry = { session, convo: { messages: [] }, title: 'T', folder: 'F' };
+
+  lastCommand = null;
+  await viewer.onMessage(entry, { type: 'revealInTree' });
+  assert.deepStrictEqual(lastCommand, {
+    command: 'claudeSessions.revealViewerSession',
+    uri: session.id,
+  });
+
+  await viewer.onMessage(entry, { type: 'openClaudeCode' });
+  assert.deepStrictEqual(lastCommand, {
+    command: 'claudeSessions.openViewerInClaudeCode',
+    uri: session,
+  });
+
+  terminalsCreated = 0;
+  await viewer.onMessage(entry, { type: 'resume' });
+  assert.strictEqual(terminalsCreated, 1, 'terminal action resumes the exact session');
+});
+
+test('generated HTML uses the narrow reading geometry and Claude identity accent', () => {
   const viewer = new ConversationViewer({});
   const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };
   const html = viewer.html({
@@ -234,16 +300,49 @@ test('generated HTML uses the approved speaker palettes and keeps orange as the 
     folder: 'F',
   });
 
-  assert.match(html, /--user-bub:#e8f0f5; --user-edge:#5b7c8f; --user-strong:#456579/);
-  assert.match(html, /--agent-bub:#ececf7; --agent-edge:#6865a5; --agent-strong:#55518f/);
+  assert.match(html, /\.msg\.user \{ max-width:82%/);
+  assert.match(html, /\.msg\.assistant \{ max-width:96%/);
+  assert.match(html, /--agent-edge:#c66b4b; --agent-strong:#a95438/);
   assert.match(html, /--claude-spark:#d97757/);
   assert.match(html, /"claudeIconUri":"claude-code-logo-light\.svg"/, 'viewer exposes the Claude favicon for message details');
   assert.match(html, /escAttr\(DATA\.claudeIconUri\)/, 'message details use the Claude favicon');
-  assert.match(html, /\.msg\.assistant \{[^}]*border-left:3px solid var\(--agent-edge\)/);
-  assert.match(html, /\.msg\.user \{[^}]*border-right:3px solid var\(--user-edge\)/);
   assert.match(html, /\.message-footer-avatar/);
   assert.match(html, /CLAUDE.*modelLabel\(m\.model\)/s);
   assert.match(html, /\.msg\.user code\.inline \{ color:var\(--user-strong\); \}/);
+});
+
+test('assistant outputs render outside the fold with narrow responsive controls', () => {
+  const viewer = new ConversationViewer({});
+  const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };
+  const html = viewer.html({
+    session,
+    convo: {
+      firstTs: '2026-01-01T10:00:00Z',
+      lastTs: '2026-01-01T10:00:05Z',
+      messages: [
+        { role: 'assistant', text: 'Done: [Mockup](poc/result.html)', ts: '2026-01-01T10:00:05Z' },
+      ],
+    },
+    title: 'T',
+    folder: 'F',
+  });
+  assert.match(html, /function renderOutputs\(indices\)/);
+  assert.match(html, /<\/div>' \+ moreButton \+ outputs \+ footer/,
+    'output blocks are outside the clamped message body');
+  assert.match(html, /data-output-open/);
+  assert.match(html, /data-output-copy/);
+  assert.match(html, /function outputDisplayName\(output\)/,
+    'output rows derive the complete filename from the path');
+  assert.match(html, /aria-label="' \+ copyLabel/,
+    'output path copying uses a compact icon with an accessible label');
+  assert.doesNotMatch(html, /class="output-path"/,
+    'the parent path is not duplicated beneath the filename');
+  assert.match(html, /\.output-title \{[^}]*overflow-wrap:anywhere/,
+    'long filenames wrap instead of losing their version suffix to ellipsis');
+  assert.match(html, /\.more \{[^}]*color:var\(--mut\)/,
+    'Show more and Show less remain visually secondary');
+  assert.match(html, /@media \(max-width:360px\)/);
+  assert.match(html, /grid-template-columns:auto minmax\(0,1fr\)/);
 });
 
 test('filter chips use the configured names in All, Agent, User order without forcing Me or uppercase', () => {
@@ -412,4 +511,18 @@ test('webview locks page scroll so header controls stay visible', () => {
   assert.match(html, /body \{[^}]*height:100%; overflow:hidden;/);
   assert.match(html, /\.viewer \{[^}]*height:100%; max-height:100%; overflow:hidden;/);
   assert.match(html, /\.chat \{[^}]*overflow-y:auto;/);
+});
+
+test('viewer heading exposes the complete session title on hover', () => {
+  const viewer = new ConversationViewer({});
+  const session = { id: '11111111-2222-3333-4444-555555555555', file, cwd: tmp };
+  const title = 'A long session title with "quotes" that can be truncated in a narrow panel';
+  const html = viewer.html({
+    session,
+    convo: { firstTs: null, lastTs: null, messages: [] },
+    title,
+    folder: 'F',
+  });
+
+  assert.match(html, /class="title" title="A long session title with &quot;quotes&quot; that can be truncated in a narrow panel"/);
 });

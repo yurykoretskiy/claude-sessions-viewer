@@ -19,7 +19,16 @@ const fakeVscode = {
     showErrorMessage(message) { messages.push(message); },
     showWarningMessage(message) { messages.push(message); },
   },
-  Uri: { file(fsPath) { return { fsPath }; } },
+  Uri: {
+    file(fsPath) {
+      const uri = { fsPath };
+      Object.defineProperty(uri, 'with', {
+        enumerable: false,
+        value(change) { return { fsPath, ...change }; },
+      });
+      return uri;
+    },
+  },
 };
 
 const originalLoad = Module._load;
@@ -28,7 +37,7 @@ Module._load = function (request, ...rest) {
   return originalLoad.call(this, request, ...rest);
 };
 
-const { openClaudeCodePanel, openSessionInClaudeCode } = require('../extension');
+const { openClaudeCodePanel, openCodexPanel, openNewClaudeCodeInFolder, openSessionInClaudeCode } = require('../extension');
 Module._load = originalLoad;
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'csv-launch-'));
@@ -60,6 +69,17 @@ test('official Claude Code launch passes the exact session id', async () => {
   ]]);
 });
 
+test('official Codex launch opens the exact custom-editor route', async () => {
+  const id = session(current).id;
+  const ok = await openCodexPanel(id);
+  assert.strictEqual(ok, true);
+  assert.deepStrictEqual(calls, [[
+    'vscode.openWith',
+    { fsPath: `/local/${id}`, scheme: 'openai-codex', authority: 'route' },
+    'chatgpt.conversationEditor',
+  ]]);
+});
+
 test('same-workspace session opens in Claude Code without opening another window', async () => {
   const flagFile = path.join(tmp, 'same-window-flag.json');
   const ok = await openSessionInClaudeCode(session(path.join(current, 'nested')), flagFile);
@@ -72,6 +92,41 @@ test('same-workspace session opens in Claude Code without opening another window
     'claude-vscode.primaryEditor.open',
     session(current).id,
     undefined,
+  ]);
+});
+
+test('No project session opens directly without mounting the home directory', async () => {
+  const flagFile = path.join(tmp, 'home-window-flag.json');
+  const ok = await openSessionInClaudeCode(session(os.homedir()), flagFile);
+  assert.strictEqual(ok, true);
+  assert.strictEqual(fs.existsSync(flagFile), false);
+  assert.deepStrictEqual(calls, [[
+    'claude-vscode.primaryEditor.open',
+    session(os.homedir()).id,
+    undefined,
+  ]]);
+});
+
+test('new Claude Code conversation reuses the current workspace window', async () => {
+  const flagFile = path.join(tmp, 'new-current-window-flag.json');
+  const ok = await openNewClaudeCodeInFolder(current, flagFile);
+  assert.strictEqual(ok, true);
+  assert.strictEqual(fs.existsSync(flagFile), false);
+  assert.deepStrictEqual(calls, [['claude-vscode.newConversation']]);
+});
+
+test('new Claude Code conversation opens another folder in a new window', async () => {
+  const flagFile = path.join(tmp, 'new-other-window', 'open-panel-flag.json');
+  const ok = await openNewClaudeCodeInFolder(other, flagFile);
+  assert.strictEqual(ok, true);
+  const flag = JSON.parse(fs.readFileSync(flagFile, 'utf8'));
+  assert.strictEqual(flag.action, 'new');
+  assert.strictEqual(flag.folder, other);
+  assert.ok(Number.isFinite(flag.ts));
+  assert.deepStrictEqual(calls.at(-1), [
+    'vscode.openFolder',
+    { fsPath: other },
+    { forceNewWindow: true },
   ]);
 });
 

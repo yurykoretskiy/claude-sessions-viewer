@@ -7,17 +7,93 @@ const path = require('path');
 const os = require('os');
 const { fileURLToPath } = require('url');
 const { extractConversation, conversationToText } = require('./conversation');
+const { extractCodexConversation } = require('./codex-indexer');
 const { SEARCH_SVG, MODEL_SVG, COPY_SVG, REFRESH_SVG } = require('./icons');
 
 const RENDER_WINDOW = 200; // big sessions: render latest N first, "render all" banner
+const OUTPUT_EXTENSIONS = new Map([
+  ['html', 'HTML'], ['htm', 'HTML'], ['pdf', 'PDF'], ['csv', 'CSV'],
+  ['xlsx', 'SHEET'], ['xls', 'SHEET'], ['docx', 'DOC'], ['pptx', 'SLIDES'],
+  ['png', 'IMAGE'], ['jpg', 'IMAGE'], ['jpeg', 'IMAGE'], ['webp', 'IMAGE'],
+  ['gif', 'IMAGE'], ['svg', 'IMAGE'], ['md', 'MARKDOWN'], ['txt', 'TEXT'],
+  ['json', 'JSON'], ['jsonl', 'JSONL'],
+]);
+const BARE_OUTPUT_EXTENSIONS = new Set([
+  'html', 'htm', 'pdf', 'csv', 'xlsx', 'xls', 'docx', 'pptx',
+  'png', 'jpg', 'jpeg', 'webp', 'gif', 'svg',
+]);
 
 function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function escAttr(s) {
+  return esc(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function cleanLabel(value, fallback) {
   const label = String(value == null ? '' : value).trim().slice(0, 40);
   return label || fallback;
+}
+
+function outputKind(href) {
+  const value = String(href || '').trim();
+  const lower = value.toLowerCase();
+  if (/^https?:\/\/docs\.google\.com\/spreadsheets(?:\/|$)/.test(lower)) return 'SHEET';
+  if (/^https?:\/\/docs\.google\.com\/document(?:\/|$)/.test(lower)) return 'DOC';
+  if (/^https?:\/\/docs\.google\.com\/presentation(?:\/|$)/.test(lower)) return 'SLIDES';
+  const clean = lower.split(/[?#]/, 1)[0];
+  const match = clean.match(/\.([a-z0-9]+)$/);
+  return match ? OUTPUT_EXTENSIONS.get(match[1]) || null : null;
+}
+
+function outputTitle(label, href, kind) {
+  const cleanLabelValue = String(label || '').replace(/\s+/g, ' ').trim();
+  if (cleanLabelValue && cleanLabelValue !== href && !/^(open|here|link|file)$/i.test(cleanLabelValue)) {
+    return cleanLabelValue.slice(0, 100);
+  }
+  if (kind === 'SHEET' && /^https?:\/\/docs\.google\.com/i.test(href)) return 'Google Sheets';
+  if (kind === 'DOC' && /^https?:\/\/docs\.google\.com/i.test(href)) return 'Google Docs';
+  if (kind === 'SLIDES' && /^https?:\/\/docs\.google\.com/i.test(href)) return 'Google Slides';
+  const clean = String(href || '').split(/[?#]/, 1)[0].replace(/\/$/, '');
+  const name = clean.split('/').pop();
+  try { return decodeURIComponent(name || href).slice(0, 100); } catch { return (name || href).slice(0, 100); }
+}
+
+function extractMessageOutputs(text) {
+  const source = String(text || '');
+  const outputs = [];
+  const seen = new Set();
+  const add = (label, rawHref) => {
+    const href = String(rawHref || '').trim().replace(/[.,;:!?]+$/, '');
+    const kind = outputKind(href);
+    if (!href || !kind || seen.has(href)) return;
+    seen.add(href);
+    outputs.push({ kind, title: outputTitle(label, href, kind), href });
+  };
+
+  let scrubbed = source.replace(/\[([^\]]+)\]\(([^\s)]+)\)/g, (whole, label, href) => {
+    add(label, href);
+    return ' '.repeat(whole.length);
+  });
+  scrubbed = scrubbed.replace(/(?:https?:\/\/|file:\/\/)[^\s<>"'`\])]+/g, (href) => {
+    add('', href);
+    return ' '.repeat(href.length);
+  });
+
+  const barePattern = /(?:^|[\s(])((?:~\/|\/|\.\.?\/)?(?:[A-Za-z0-9_.-]+\/)*[A-Za-z0-9_.-]+\.([A-Za-z0-9]+))(?=$|[\s),.;:])/g;
+  let match;
+  while ((match = barePattern.exec(scrubbed))) {
+    const ext = String(match[2] || '').toLowerCase();
+    if (BARE_OUTPUT_EXTENSIONS.has(ext)) add('', match[1]);
+  }
+  return outputs.slice(0, 8);
+}
+
+function outputsForMessages(messages) {
+  return (messages || []).map((message) =>
+    message && message.role === 'assistant' ? extractMessageOutputs(message.text) : []
+  );
 }
 
 class ConversationViewer {
@@ -34,31 +110,42 @@ class ConversationViewer {
       userLabel: cleanLabel(c.get('userLabel', 'USER'), 'USER'),
       agentLabel: cleanLabel(c.get('agentLabel', 'CLAUDE'), 'CLAUDE'),
       liveRefresh: c.get('liveRefresh.enabled', false),
-      shortPreviewLines: c.get('shortPreviewLines', 10),
+      shortPreviewLines: c.get('shortPreviewLines', 14),
     };
   }
 
+  extract(session) {
+    return session && session.source === 'codex'
+      ? extractCodexConversation(session.file)
+      : extractConversation(session.file);
+  }
+
   open(session, title, folderLabel, opts = {}) {
-    const existing = this.panels.get(session.id);
+    const panelKey = `${session.source || 'claude'}:${session.id}`;
+    const existing = this.panels.get(panelKey);
     if (existing) {
       existing.panel.reveal(opts.beside ? vscode.ViewColumn.Beside : undefined);
       if (opts.find) existing.panel.webview.postMessage({ type: 'find', ...opts.find });
       return Promise.resolve();
     }
-    const inFlight = this.opening.get(session.id);
+    const inFlight = this.opening.get(panelKey);
     if (inFlight) return inFlight;
 
     const promise = (async () => {
-      const convo = await extractConversation(session.file);
+      const convo = await this.extract(session);
       const panel = vscode.window.createWebviewPanel(
         'claudeSessionsViewer.conversation',
         title,
         opts.beside ? vscode.ViewColumn.Beside : vscode.ViewColumn.One,
         { enableScripts: true, retainContextWhenHidden: true }
       );
-      panel.iconPath = vscode.Uri.joinPath(this.context.extensionUri, 'assets', 'mascot-icon.png');
+      panel.iconPath = vscode.Uri.joinPath(
+        this.context.extensionUri,
+        'assets',
+        session.source === 'codex' ? 'codex-logo.svg' : 'mascot-icon.png'
+      );
       const entry = { panel, convo, session, title, folder: folderLabel };
-      this.panels.set(session.id, entry);
+      this.panels.set(panelKey, entry);
 
       const fsMod = require('fs');
       let listener = null;
@@ -68,12 +155,13 @@ class ConversationViewer {
           if (refreshing) return;
           refreshing = true;
           try {
-            entry.convo = await extractConversation(session.file);
+            entry.convo = await this.extract(session);
             panel.webview.postMessage({
               type: 'update',
               messages: entry.convo.messages,
               firstTs: entry.convo.firstTs,
               lastTs: entry.convo.lastTs,
+              outputs: outputsForMessages(entry.convo.messages),
             });
           } catch {}
           refreshing = false;
@@ -83,14 +171,14 @@ class ConversationViewer {
 
       panel.onDidDispose(() => {
         if (listener) fsMod.unwatchFile(session.file, listener);
-        this.panels.delete(session.id);
+        this.panels.delete(panelKey);
       });
       panel.webview.onDidReceiveMessage((msg) => this.onMessage(entry, msg));
       panel.webview.html = this.html(entry, opts.find || null);
     })();
 
-    this.opening.set(session.id, promise);
-    return promise.finally(() => this.opening.delete(session.id));
+    this.opening.set(panelKey, promise);
+    return promise.finally(() => this.opening.delete(panelKey));
   }
 
   async onMessage(entry, msg) {
@@ -99,12 +187,13 @@ class ConversationViewer {
     switch (msg.type) {
       case 'refresh': {
         try {
-          entry.convo = await extractConversation(session.file);
+          entry.convo = await this.extract(session);
           entry.panel.webview.postMessage({
             type: 'update',
             messages: entry.convo.messages,
             firstTs: entry.convo.firstTs,
             lastTs: entry.convo.lastTs,
+            outputs: outputsForMessages(entry.convo.messages),
           });
         } catch (error) {
           vscode.window.showErrorMessage(`Claude Sessions: could not refresh conversation — ${error.message}`);
@@ -112,14 +201,21 @@ class ConversationViewer {
         }
         break;
       }
+      case 'revealInTree':
+        await vscode.commands.executeCommand('claudeSessions.revealViewerSession', session.id);
+        break;
+      case 'openClaudeCode':
+        await vscode.commands.executeCommand('claudeSessions.openViewerInClaudeCode', session);
+        break;
       case 'resume': {
         if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session.id)) {
           vscode.window.showErrorMessage('Claude Sessions: refusing to resume — session id is not a valid UUID.');
           break;
         }
-        const terminal = vscode.window.createTerminal({ name: `claude · ${folder}`, cwd: session.cwd });
+        const provider = session.source === 'codex' ? 'codex' : 'claude';
+        const terminal = vscode.window.createTerminal({ name: `${provider} · ${folder}`, cwd: session.cwd });
         terminal.show();
-        terminal.sendText(`claude --resume ${session.id}`, true);
+        terminal.sendText(provider === 'codex' ? `codex resume ${session.id}` : `claude --resume ${session.id}`, true);
         break;
       }
       case 'copy':
@@ -127,7 +223,7 @@ class ConversationViewer {
           title,
           folder,
           userLabel: cfg.userLabel,
-          agentLabel: cfg.agentLabel,
+          agentLabel: session.source === 'codex' ? 'CODEX' : cfg.agentLabel,
           names: true,
           filter: 'all',
           withTools: false,
@@ -146,6 +242,11 @@ class ConversationViewer {
           .map((m) => m.text)
           .join('\n\n');
         if (text) await vscode.env.clipboard.writeText(text);
+        break;
+      }
+      case 'copyOutput': {
+        const value = String(msg.value || '').trim().slice(0, 20000);
+        if (value) await vscode.env.clipboard.writeText(value);
         break;
       }
       case 'openLink': {
@@ -191,27 +292,44 @@ class ConversationViewer {
   html(entry, find = null) {
     const { session, convo, title, folder } = entry;
     const cfg = this.config;
+    if (session.source === 'codex') cfg.agentLabel = 'CODEX';
+    const officialLabel = session.source === 'codex' ? 'Codex' : 'Claude Code';
     const nonce = Math.random().toString(36).slice(2);
     const webview = entry.panel && entry.panel.webview;
+    const mascotAsset = session.source === 'codex' ? 'codex-logo.svg' : 'mascot.png';
     const mascotUri = webview && typeof webview.asWebviewUri === 'function'
-      ? webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'assets', 'mascot.png')).toString()
-      : 'mascot.png';
+      ? webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'assets', mascotAsset)).toString()
+      : mascotAsset;
+    const folderIconUri = webview && typeof webview.asWebviewUri === 'function'
+      ? webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'assets', 'folder-neutral-light.svg')).toString()
+      : 'folder-neutral-light.svg';
+    const revealIconUri = webview && typeof webview.asWebviewUri === 'function'
+      ? webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'assets', 'tree-open-preview-light.svg')).toString()
+      : 'tree-open-preview-light.svg';
+    const terminalIconUri = webview && typeof webview.asWebviewUri === 'function'
+      ? webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'assets', 'tree-terminal-light.svg')).toString()
+      : 'tree-terminal-light.svg';
+    const officialIconAsset = session.source === 'codex' ? 'codex-logo.svg' : 'claude-code-logo-light.svg';
+    const claudeIconUri = webview && typeof webview.asWebviewUri === 'function'
+      ? webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'assets', officialIconAsset)).toString()
+      : officialIconAsset;
     const imageSource = webview && webview.cspSource ? webview.cspSource : "'self'";
     const data = JSON.stringify({
       find,
       messages: convo.messages,
+      outputs: outputsForMessages(convo.messages),
       userLabel: cfg.userLabel,
       agentLabel: cfg.agentLabel,
       theme: cfg.theme,
-      foldLines: Math.max(1, Math.min(30, Number(cfg.shortPreviewLines) || 10)),
+      foldLines: Math.max(1, Math.min(30, Number(cfg.shortPreviewLines) || 14)),
       window: RENDER_WINDOW,
       sessionId: session.id,
       rawPath: session.file,
       cwd: session.cwd,
+      source: session.source || 'claude',
       mascotUri,
-      claudeIconUri: webview && typeof webview.asWebviewUri === 'function'
-        ? webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'assets', 'claude-code-logo-light.svg')).toString()
-        : 'claude-code-logo-light.svg',
+      folderIconUri,
+      claudeIconUri,
     }).replace(/</g, '\\u003c');
     const messageCopyIcon = JSON.stringify(COPY_SVG).replace(/</g, '\\u003c');
     const nMsgs = convo.messages.filter((m) => m.role !== 'tool').length;
@@ -230,29 +348,34 @@ class ConversationViewer {
     --line:var(--vscode-panel-border,#3c3c3c); --fg:var(--vscode-foreground);
     --mut:var(--vscode-descriptionForeground,#8a8a8a); --chip:var(--vscode-badge-background,#333);
     --btn2:var(--vscode-button-secondaryBackground,#3a3d41); --sep:#5a5a5a;
-    --user-bub:color-mix(in srgb, #e8f0f5 72%, var(--vscode-editor-background));
+    --user-bub:color-mix(in srgb, #5b7c8f 9%, var(--vscode-editor-background));
     --user-edge:#5b7c8f; --user-strong:#456579;
-    --agent-bub:color-mix(in srgb, #ececf7 72%, var(--vscode-editor-background));
-    --agent-edge:#6865a5; --agent-strong:#55518f;
+    --agent-bub:color-mix(in srgb, #d97757 5%, var(--vscode-editor-background));
+    --agent-edge:#c66b4b; --agent-strong:#a95438;
     --rail-track:rgba(130,126,145,.18); --rail-fill:#8c849d; --rail-thumb:#8c849d;
     --code-bg:#282828; --code-fg:#eee; --mark:#ffe98f; }
   body.dark { --bg:#1e1e1e; --panel:#252526; --line:#3c3c3c; --fg:#ccc; --mut:#8a8a8a;
-    --user-bub:#24343d; --user-edge:#7099ad; --user-strong:#93b5c6;
-    --agent-bub:#29283a; --agent-edge:#8d88c5; --agent-strong:#aaa6dc;
+    --user-bub:color-mix(in srgb, #7099ad 13%, #1e1e1e); --user-edge:#7099ad; --user-strong:#93b5c6;
+    --agent-bub:color-mix(in srgb, #d97757 8%, #1e1e1e); --agent-edge:#d97757; --agent-strong:#e39a80;
     --chip:#333; --btn2:#3a3d41; --sep:#5a5a5a;
     --rail-track:rgba(142,134,162,.20); --rail-fill:#8f86a6; --rail-thumb:#8f86a6;
     --code-bg:#161616; --code-fg:#eee; --mark:#6f5a18; }
   body.light { --bg:#fff; --panel:#f7f7f7; --line:#dedede; --fg:#333; --mut:#767676;
-    --user-bub:#e8f0f5; --user-edge:#5b7c8f; --user-strong:#456579;
-    --agent-bub:#ececf7; --agent-edge:#6865a5; --agent-strong:#55518f;
+    --user-bub:color-mix(in srgb, #5b7c8f 9%, #fff); --user-edge:#5b7c8f; --user-strong:#456579;
+    --agent-bub:color-mix(in srgb, #d97757 6%, #fff); --agent-edge:#c66b4b; --agent-strong:#a95438;
     --chip:#f1f1f1; --btn2:#e9e9e9; --sep:#bbb;
     --rail-track:rgba(115,108,138,.16); --rail-fill:#8c849d; --rail-thumb:#8c849d;
     --code-bg:#282828; --code-fg:#eee; --mark:#ffe98f; }
   body { background:var(--bg); color:var(--fg); display:flex; justify-content:center; height:100%; overflow:hidden; }
   .viewer { width:min(820px,100vw); height:100%; max-height:100%; overflow:hidden; background:var(--panel); border-left:1px solid var(--line); border-right:1px solid var(--line); display:flex; flex-direction:column; position:relative; }
-  .vhead { padding:10px 16px 8px; border-bottom:1px solid var(--line); background:color-mix(in srgb, var(--panel) 97%, transparent); flex-shrink:0; position:relative; z-index:8; }
-  .vrow { display:flex; align-items:center; gap:10px; }
-  .title { font-size:17px; font-weight:680; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .vhead { padding:8px 16px 7px; border-bottom:1px solid var(--line); background:color-mix(in srgb, var(--panel) 97%, transparent); flex-shrink:0; position:relative; z-index:8; }
+  .vrow { display:flex; align-items:center; min-width:0; }
+  .title { font-size:14px; font-weight:600; flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .folder-row { display:flex; align-items:center; min-width:0; margin-bottom:3px; }
+  .header-actions { display:flex; align-items:center; gap:0; flex:0 0 auto; padding:1px; }
+  .header-btn { width:22px; height:22px; border:1px solid transparent; background:transparent; color:var(--mut); cursor:pointer; padding:0; border-radius:3px; display:inline-flex; align-items:center; justify-content:center; }
+  .header-btn:hover, .header-btn:focus-visible { background:var(--btn2); color:var(--fg); outline:none; }
+  .header-btn img { width:16px; height:16px; object-fit:contain; }
   .ibtn { width:30px; height:30px; border:1px solid transparent; background:transparent; color:var(--mut); font-size:14px; cursor:pointer; padding:0; border-radius:7px; display:inline-flex; align-items:center; justify-content:center; }
   .ibtn:hover { background:var(--btn2); color:var(--fg); }
   .ibtn.open { background:var(--btn2); color:var(--agent-strong); }
@@ -262,7 +385,9 @@ class ConversationViewer {
     border:1px solid var(--vscode-editorHoverWidget-border,transparent); padding:3px 8px; border-radius:5px;
     font-size:11px; white-space:nowrap; opacity:0; pointer-events:none; transition:opacity .1s ease; z-index:30; }
   [data-tip]:hover::after, [data-tip]:focus-visible::after { opacity:1; transition-delay:.15s; }
-  .folder-label { color:var(--mut); font-size:11px; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:3px; }
+  .folder-label { display:flex; align-items:center; gap:5px; flex:1 1 auto; min-width:0; color:var(--mut); font-size:11px; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .folder-label img { width:13px; height:13px; flex:0 0 13px; object-fit:contain; opacity:.9; }
+  .folder-label span { overflow:hidden; text-overflow:ellipsis; }
   .controls { display:flex; gap:8px; align-items:center; padding:8px 14px; border-bottom:1px solid var(--line);
     font-size:12px; flex-wrap:nowrap; flex-shrink:0; z-index:4; position:relative; }
   .segmented { display:flex; border:1px solid var(--line); border-radius:999px; overflow:hidden; flex-shrink:0; }
@@ -270,6 +395,9 @@ class ConversationViewer {
     padding:3px 10px; cursor:pointer; font:inherit; font-size:11.5px; white-space:nowrap; }
   .seg:last-child { border-right:none; }
   .seg.on { background:var(--btn2); color:var(--fg); }
+  .scale-btn { width:24px; height:24px; border:1px solid var(--line); border-radius:6px; background:transparent;
+    color:var(--mut); cursor:pointer; padding:0; font:inherit; font-size:15px; line-height:1; }
+  .scale-btn:hover, .scale-btn:focus-visible { background:var(--btn2); color:var(--fg); outline:none; }
   .spacer { flex:1 1 auto; }
   .searchbar { display:none; grid-template-columns:1fr auto auto auto auto; align-items:center; gap:7px;
     padding:8px 16px; border-bottom:1px solid var(--line); flex-shrink:0; z-index:4; }
@@ -286,15 +414,16 @@ class ConversationViewer {
   .day { width:max-content; margin:12px auto; position:sticky; top:8px; z-index:2; color:var(--mut); font-size:11px;
     background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:2px 10px;
     box-shadow:0 2px 9px rgba(0,0,0,.05); }
-  .msg { max-width:78%; width:fit-content; margin:9px 0; padding:9px 12px; border-radius:13px; overflow-wrap:break-word; position:relative; }
+  .msg { width:fit-content; margin:9px 0; padding:9px 12px; border-radius:13px; overflow-wrap:break-word; position:relative; }
   .msg.folded { cursor:pointer; margin:4px 0; padding:6px 10px; }
-  .msg.folded .bodywrap { overflow:hidden; max-height:calc(var(--message-fold-lines, 10) * 1.52em);
+  .msg.folded .bodywrap { overflow:hidden; max-height:calc(var(--message-fold-lines, 14) * 1.55em);
     -webkit-mask-image:linear-gradient(to bottom, #000 0%, #000 calc(100% - 3rem), transparent 100%);
     mask-image:linear-gradient(to bottom, #000 0%, #000 calc(100% - 3rem), transparent 100%); }
   .part-sep { height:1px; background:color-mix(in srgb, var(--line) 55%, transparent); margin:9px -3px; }
   .msg, .msg.folded { padding-right:26px; }
-  .msg.user { margin-left:auto; background:var(--user-bub); border-right:3px solid var(--user-edge); border-bottom-right-radius:4px; }
-  .msg.assistant { margin-right:auto; background:var(--agent-bub); border-left:3px solid var(--agent-edge); border-bottom-left-radius:4px; }
+  .msg.user { max-width:82%; margin-left:auto; background:var(--user-bub); border-bottom-right-radius:4px; }
+  .msg.assistant { max-width:96%; margin-right:auto; background:var(--agent-bub); border-bottom-left-radius:4px; }
+  .msg.filter-hidden, .day.filter-hidden { display:none; }
   .msg-copy { position:absolute; bottom:-8px; width:22px; height:22px; padding:0; display:flex; align-items:center; justify-content:center;
     border:1px solid var(--line); border-radius:6px; background:var(--panel); color:var(--mut); cursor:pointer;
     opacity:0; pointer-events:none; transform:translateY(2px); transition:opacity .1s ease, transform .1s ease, color .1s ease; z-index:3; }
@@ -304,23 +433,23 @@ class ConversationViewer {
   .msg-copy:hover, .msg-copy:focus-visible, .msg-copy.copied { opacity:1; color:var(--fg); background:var(--btn2); outline:none; }
   .msg-copy svg { width:13px; height:13px; }
   .msg-copy .copied-mark { font-size:14px; line-height:1; }
-  .message-footer { display:flex; align-items:center; gap:6px; margin-top:9px; padding-top:7px;
-    border-top:1px solid color-mix(in srgb, var(--line) 70%, transparent); color:var(--mut);
+  .message-footer { display:flex; align-items:center; gap:6px; margin-top:7px; color:var(--mut);
     font-size:10.5px; letter-spacing:.01em; min-height:18px;
     visibility:hidden; opacity:0; transition:opacity .12s ease; }
   body.footer-visible .message-footer { visibility:visible; opacity:1; }
   .message-footer-avatar { width:15px; height:15px; flex:0 0 15px; object-fit:contain; }
   body.dark .message-footer-avatar { filter:invert(1) opacity(.84); }
   .message-footer-user { color:var(--user-strong); font-size:10px; font-weight:700; }
-  .more { border:0; padding:0; margin:7px 0 0; background:transparent; color:var(--agent-strong);
+  .more { border:0; padding:0; margin:7px 0 0; background:transparent; color:var(--mut);
     font:inherit; font-size:12px; cursor:pointer; display:block; }
-  .more:hover, .more:focus-visible { text-decoration:underline; outline:none; }
+  .more:hover, .more:focus-visible { color:var(--fg); text-decoration:underline; outline:none; }
   .more::after { content:'⌄'; display:inline-block; margin-left:5px; font-size:12px; }
   .msg:not(.folded) .more::after { content:'⌃'; }
   .more[hidden] { display:none; }
   .ibtn.spinning svg { animation:spin .8s linear infinite; }
   @keyframes spin { to { transform:rotate(360deg); } }
-  .body p { margin:0 0 7px; white-space:pre-wrap; }
+  .body { font-size:calc(15px * var(--reader-scale, 1)); line-height:1.55; }
+  .body p { margin:0 0 8px; white-space:pre-wrap; }
   .body p:last-child { margin-bottom:0; }
   .body a { color:var(--vscode-textLink-foreground,#2677c9); text-decoration:underline; text-underline-offset:2px; }
   .body a:hover { color:var(--vscode-textLink-activeForeground,#1a8cff); }
@@ -340,7 +469,7 @@ class ConversationViewer {
   .attach:hover { color:var(--fg); border-color:var(--agent-edge); }
   pre { margin:8px 0; padding:9px 10px; border-radius:8px; background:var(--code-bg); color:var(--code-fg);
     overflow-x:auto; font-family:var(--vscode-editor-font-family, ui-monospace, Menlo, monospace);
-    font-size:calc(var(--vscode-editor-font-size, 12px) * 0.95); line-height:1.45; }
+    font-size:calc(var(--vscode-editor-font-size, 12px) * 0.95 * var(--reader-scale, 1)); line-height:1.45; }
   .code-label { display:flex; justify-content:space-between; align-items:center; gap:8px; color:#b9b9b9; font-size:11px; margin-bottom:5px; }
   .copy-code { border:1px solid #555; border-radius:5px; background:transparent; color:#dcdcdc; font:inherit; font-size:11px; cursor:pointer; }
   .table-wrap { max-width:100%; overflow-x:auto; margin:8px 0; border:1px solid color-mix(in srgb, var(--line) 80%, var(--fg));
@@ -350,10 +479,27 @@ class ConversationViewer {
   th { background:rgba(0,0,0,.05); font-weight:700; }
   .msg.assistant th { background:color-mix(in srgb, var(--agent-edge) 12%, transparent); }
   .msg.user th { background:color-mix(in srgb, var(--user-edge) 12%, transparent); }
+  .outputs { margin:11px 0 1px; padding-left:10px; border-left:2px solid color-mix(in srgb, var(--claude-spark) 78%, var(--line)); }
+  .outputs-head { display:flex; align-items:center; gap:7px; padding:0 0 4px; border-bottom:1px solid var(--line);
+    color:var(--claude-spark); font-size:10px; font-weight:700; text-transform:uppercase; }
+  .outputs-count { color:var(--mut); font-weight:400; text-transform:none; }
+  .output-row { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:8px;
+    min-width:0; padding:7px 0; border-bottom:1px solid color-mix(in srgb, var(--line) 72%, transparent); }
+  .output-chip, .output-copy { border:0; background:transparent; cursor:pointer; font:inherit; }
+  .output-chip { min-width:42px; padding:2px 6px; border:1px solid currentColor; border-radius:5px;
+    color:var(--vscode-textLink-foreground,#2677c9); font-size:10.5px; font-weight:700; letter-spacing:.02em; }
+  .output-chip[data-kind="SHEET"] { color:var(--vscode-testing-iconPassed,#18864b); }
+  .output-chip[data-kind="DOC"], .output-chip[data-kind="SLIDES"] { color:var(--agent-strong); }
+  .output-chip:hover, .output-chip:focus-visible { background:color-mix(in srgb, currentColor 10%, transparent); outline:none; }
+  .output-main { min-width:0; }
+  .output-title { color:var(--fg); font-size:12px; font-weight:600; line-height:1.3; overflow-wrap:anywhere; white-space:normal; }
+  .output-copy { width:24px; height:24px; padding:0; display:flex; align-items:center; justify-content:center;
+    color:var(--mut); border-radius:5px; white-space:nowrap; }
+  .output-copy svg { width:13px; height:13px; }
+  .output-copy:hover, .output-copy:focus-visible { color:var(--fg); background:var(--btn2); outline:none; }
+  .output-copy .copied-mark { font-size:14px; line-height:1; }
   mark { background:var(--mark); color:inherit; border-radius:3px; padding:0 1px; }
   mark.current { background:#ffc85a; box-shadow:0 0 0 2px rgba(217,119,87,.45); }
-  .more { color:var(--agent-strong); font-size:12px; cursor:pointer; margin-top:6px; display:block; }
-  .more:hover { text-decoration:underline; }
   .rail { position:absolute; right:6px; top:16px; bottom:72px; width:17px; border-radius:999px;
     background:transparent; cursor:grab; touch-action:none; z-index:5; }
   .rail::before { content:''; position:absolute; left:50%; transform:translateX(-50%); top:0; bottom:0;
@@ -363,9 +509,10 @@ class ConversationViewer {
     border-radius:999px; background:var(--rail-fill); opacity:.72; pointer-events:none; }
   .rail-thumb { position:absolute; left:50%; transform:translateX(-50%); top:var(--rail-top,0%); width:9px; height:46px;
     margin-top:-23px; border-radius:999px; background:var(--rail-thumb); box-shadow:0 1px 7px rgba(0,0,0,.22);
-    opacity:.82; pointer-events:none; }
+    opacity:0; pointer-events:none; transition:opacity 160ms ease; }
+  .chatwrap:hover .rail-thumb, .chatwrap.scrolling .rail-thumb { opacity:.82; }
   .rail:hover .rail-thumb, .rail.dragging .rail-thumb { width:11px; opacity:1; }
-  .pospill { position:absolute; right:28px; top:var(--rail-top,0%); transform:translateY(-50%);
+  .pospill { position:absolute; right:28px; top:clamp(26px, var(--rail-top,0%), calc(100% - 88px)); transform:translateY(-50%);
     background:rgba(55,55,55,.94); color:#fff; border-radius:999px; padding:4px 9px; font-size:11px;
     line-height:1.2; white-space:nowrap; pointer-events:none; opacity:0; transition:opacity 160ms ease; z-index:6; }
   .chatwrap.scrolling .pospill, .chatwrap:hover .pospill { opacity:1; }
@@ -376,19 +523,36 @@ class ConversationViewer {
   .empty { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--mut); gap:6px; }
   .empty-mascot { width:92px; height:64px; object-fit:contain; opacity:.9; }
   @media (max-width:620px) {
-    .chat { padding-right:46px; }
-    .msg { max-width:86%; }
+    .chat { padding:14px 38px 18px 12px; }
+    .msg.user { max-width:88%; }
+    .msg.assistant { max-width:100%; }
     .title { font-size:15px; }
     .controls { gap:5px; }
   }
+  @media (max-width:360px) {
+    .chat { padding-left:9px; padding-right:30px; }
+    .msg { padding-left:9px; padding-right:22px; }
+    .output-row { grid-template-columns:auto minmax(0,1fr); gap:5px 7px; }
+    .output-title { white-space:normal; overflow-wrap:anywhere; }
+    .rail { right:1px; }
+    .jump { right:7px; }
+  }
 </style>
 </head>
-<body class="sys footer-hidden" style="--fold-lines:${Math.max(1, Math.min(30, Number(cfg.shortPreviewLines) || 10))}">
+<body class="sys footer-hidden" style="--fold-lines:${Math.max(1, Math.min(30, Number(cfg.shortPreviewLines) || 14))}">
 <main class="viewer">
   <div class="vhead">
-    <div class="folder-label" title="${esc(folder)}">${esc(folder)}</div>
+    <div class="folder-row">
+      <div class="folder-label" title="${escAttr(folder)}"><img src="${escAttr(folderIconUri)}" alt=""><span>${esc(folder)}</span></div>
+      <div class="header-actions" aria-label="Session actions">
+        <button class="header-btn" id="revealInTree" aria-label="Reveal this session in the tree" data-tip="Reveal in tree"><img src="${escAttr(revealIconUri)}" alt=""></button>
+        <button class="header-btn" id="openClaudeCode" aria-label="Open this session in ${escAttr(officialLabel)}" data-tip="Open in ${escAttr(officialLabel)}"><img src="${escAttr(claudeIconUri)}" alt=""></button>
+        <button class="header-btn" id="resumeTerminal" aria-label="Resume this session in a terminal" data-tip="Resume in terminal"><img src="${escAttr(terminalIconUri)}" alt=""></button>
+        <button class="header-btn" id="refreshViewer" aria-label="Refresh conversation" data-tip="Refresh conversation">${REFRESH_SVG}</button>
+      </div>
+    </div>
     <div class="vrow">
-      <span class="title">${esc(title)}</span>
+      <span class="title" title="${escAttr(title)}">${esc(title)}</span>
     </div>
   </div>
   <div class="controls">
@@ -397,8 +561,9 @@ class ConversationViewer {
       <button class="seg" data-f="assistant" id="chipAgent">${esc(cfg.agentLabel)}</button>
       <button class="seg" data-f="user" id="chipUser">${esc(cfg.userLabel)}</button>
     </div>
-    <button class="ibtn" id="refreshViewer" aria-label="Refresh conversation" data-tip="Refresh conversation">${REFRESH_SVG}</button>
     <span class="spacer"></span>
+    <button class="scale-btn" id="fontDown" aria-label="Decrease conversation text size" data-tip="Decrease text size">−</button>
+    <button class="scale-btn" id="fontUp" aria-label="Increase conversation text size" data-tip="Increase text size">+</button>
     <button class="ibtn" id="modelToggle" aria-label="Show message details" aria-pressed="false" data-tip="Show model and speaker">${MODEL_SVG}</button>
     <button class="ibtn" id="copyConversation" aria-label="Copy whole conversation" data-tip="Copy whole conversation">${COPY_SVG}</button>
     <button class="ibtn" id="searchToggle" aria-label="Search" data-tip="Search">${SEARCH_SVG}</button>
@@ -430,10 +595,14 @@ let scrollTimer = 0;
 // Bubble ids expanded by the reader. Long messages start compact and expose
 // their own Show more / Show less control.
 const overrides = new Set();
+const filterAnchors = new Map();
+const savedViewerState = vscodeApi.getState() || {};
+let readerScale = Math.min(1.25, Math.max(0.85, Number(savedViewerState.readerScale) || 1));
 const $ = id => document.getElementById(id);
 const escHtml = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
 document.body.className = (DATA.theme === 'system' ? 'sys' : DATA.theme) + ' footer-hidden';
+document.body.style.setProperty('--reader-scale', readerScale);
 
 function labels() {
   return {
@@ -443,8 +612,8 @@ function labels() {
 }
 
 function foldLinesForRole(role) {
-  const base = Math.max(1, Number(DATA.foldLines) || 10);
-  return role === 'user' ? Math.max(3, Math.round(base * 0.4)) : base;
+  const base = Math.max(1, Number(DATA.foldLines) || 14);
+  return role === 'user' ? 4 : base;
 }
 
 function messageFooter(m) {
@@ -456,6 +625,35 @@ function messageFooter(m) {
     ? '<span class="message-footer-user" aria-hidden="true">●</span>'
     : '<img class="message-footer-avatar" src="' + escAttr(DATA.claudeIconUri) + '" alt="">';
   return '<div class="message-footer">' + icon + '<span>' + escHtml(label) + '</span></div>';
+}
+
+function outputDisplayName(output) {
+  const href = String(output && output.href || '');
+  if (/^https?:\\/\\/docs\\.google\\.com\\//i.test(href)) return output.title || output.kind;
+  const clean = href.split(/[?#]/, 1)[0].replace(/\\/+$/, '');
+  const rawName = clean.split('/').pop();
+  if (!rawName) return output.title || href;
+  try { return decodeURIComponent(rawName); } catch { return rawName; }
+}
+
+function renderOutputs(indices) {
+  const outputs = [];
+  const seen = new Set();
+  indices.forEach((index) => (DATA.outputs[index] || []).forEach((output) => {
+    if (!output || !output.href || seen.has(output.href)) return;
+    seen.add(output.href);
+    outputs.push(output);
+  }));
+  if (!outputs.length) return '';
+  const rows = outputs.map((output) => {
+    const copyLabel = /^https?:\\/\\//i.test(output.href) ? 'Copy full URL' : 'Copy full path';
+    return '<div class="output-row">' +
+      '<button class="output-chip" type="button" data-output-open="' + escAttr(output.href) + '" data-kind="' + escAttr(output.kind) + '" title="Open ' + escAttr(output.href) + '">' + escHtml(output.kind) + '</button>' +
+      '<div class="output-main" title="' + escAttr(output.href) + '"><div class="output-title">' + escHtml(outputDisplayName(output)) + '</div></div>' +
+      '<button class="output-copy" type="button" data-output-copy="' + escAttr(output.href) + '" aria-label="' + copyLabel + '" title="' + copyLabel + '">' + MESSAGE_COPY_ICON + '</button>' +
+    '</div>';
+  }).join('');
+  return '<div class="outputs"><div class="outputs-head"><span>Output</span><span class="outputs-count">' + outputs.length + ' artifact' + (outputs.length === 1 ? '' : 's') + '</span></div>' + rows + '</div>';
 }
 
 function dayOf(ts){ if(!ts) return null; const d = new Date(ts);
@@ -646,6 +844,7 @@ function renderMessageBody(m, index, isCurrentMatch) {
 
 function syncFoldControls() {
   $('chat').querySelectorAll('.msg').forEach((msg) => {
+    if (msg.classList.contains('filter-hidden')) return;
     const body = msg.querySelector('.bodywrap');
     const more = msg.querySelector('.more');
     if (!body || !more) return;
@@ -667,9 +866,21 @@ function syncFoldControls() {
 function toggleFoldInPlace(i) {
   const msg = $('chat').querySelector('.msg[data-i="' + i + '"]');
   if (!msg || msg.dataset.hasOverflow !== 'true') return;
+  const chat = $('chat');
   const folded = msg.classList.toggle('folded');
-  if (folded) overrides.delete(i);
-  else overrides.add(i);
+  if (folded) {
+    overrides.delete(i);
+    // Show less: come back to where the reader was before expanding.
+    const back = Number(msg.dataset.scrollBack);
+    chat.scrollTo({ top: Number.isFinite(back) ? back : Math.max(0, msg.offsetTop - 10), behavior: 'instant' });
+    delete msg.dataset.scrollBack;
+  } else {
+    overrides.add(i);
+    // Show more: remember where we were, then anchor at the top of the
+    // expanded message so reading starts from its beginning.
+    msg.dataset.scrollBack = chat.scrollTop;
+    chat.scrollTo({ top: Math.max(0, msg.offsetTop - 10), behavior: 'instant' });
+  }
   const more = msg.querySelector('.more');
   if (more) {
     more.textContent = folded ? 'Show more' : 'Show less';
@@ -688,6 +899,76 @@ function collectMatches() {
     if ((m.text || '').toLowerCase().includes(query)) found.push(i);
   });
   return found;
+}
+
+function applyFilterVisibility() {
+  $('chat').querySelectorAll('.msg').forEach((msg) => {
+    const visible = filter === 'all' || msg.classList.contains(filter);
+    msg.classList.toggle('filter-hidden', !visible);
+  });
+  $('chat').querySelectorAll('.day').forEach((day) => {
+    day.classList.toggle('filter-hidden', filter !== 'all');
+  });
+}
+
+function rememberFilterAnchor() {
+  const current = currentMessage();
+  if (!current) return;
+  const chat = $('chat');
+  const chatRect = chat.getBoundingClientRect();
+  filterAnchors.set(filter, {
+    index: Number(current.dataset.i),
+    offset: current.getBoundingClientRect().top - chatRect.top,
+  });
+}
+
+function nearestVisibleMessage(index, targetFilter) {
+  const candidates = Array.from($('chat').querySelectorAll('.msg'))
+    .filter((msg) => !msg.classList.contains('filter-hidden'));
+  if (!candidates.length) return null;
+  const exact = candidates.find((msg) => Number(msg.dataset.i) === index);
+  if (exact) return exact;
+  const ordered = candidates.sort((a, b) => Number(a.dataset.i) - Number(b.dataset.i));
+  if (targetFilter === 'assistant') {
+    return ordered.find((msg) => Number(msg.dataset.i) >= index) || ordered[ordered.length - 1];
+  }
+  if (targetFilter === 'user') {
+    for (let i = ordered.length - 1; i >= 0; i--) {
+      if (Number(ordered[i].dataset.i) <= index) return ordered[i];
+    }
+  }
+  return ordered[0];
+}
+
+function restoreFilterAnchor(previousAnchor) {
+  const saved = filterAnchors.get(filter) || previousAnchor;
+  const target = saved ? nearestVisibleMessage(saved.index, filter) : currentMessage();
+  if (!target) {
+    updateRail();
+    return;
+  }
+  const chat = $('chat');
+  const chatRect = chat.getBoundingClientRect();
+  const offset = saved && Number.isFinite(saved.offset) ? saved.offset : 32;
+  chat.scrollTop = Math.max(0, chat.scrollTop + target.getBoundingClientRect().top - chatRect.top - offset);
+  updateRail();
+}
+
+function setFilter(nextFilter) {
+  if (!['all', 'assistant', 'user'].includes(nextFilter) || nextFilter === filter) return;
+  const previousAnchor = (() => {
+    rememberFilterAnchor();
+    return filterAnchors.get(filter) || null;
+  })();
+  filter = nextFilter;
+  document.querySelectorAll('[data-f]').forEach((x) => x.classList.toggle('on', x.dataset.f === filter));
+  matches = collectMatches();
+  currentMatch = 0;
+  applyFilterVisibility();
+  // Class changes are synchronous, but wait one frame for the browser to
+  // recalculate the filtered layout before restoring the semantic anchor.
+  requestAnimationFrame(() => restoreFilterAnchor(previousAnchor));
+  updateMatches(false);
 }
 
 function render(keepScroll) {
@@ -738,10 +1019,9 @@ function render(keepScroll) {
   let lastDay = null;
   const frag = [];
   for (const g of groups) {
-    if (filter !== 'all' && g.role !== filter) continue;
     const g0 = g.indices[0];
     const day = dayOf(msgs[g0].ts);
-    if (day && day !== lastDay && filter === 'all') { frag.push('<div class="day">' + day + '</div>'); lastDay = day; }
+    if (day && day !== lastDay) { frag.push('<div class="day" data-day="' + (day || '') + '">' + day + '</div>'); lastDay = day; }
     const folded = !overrides.has(g0);
     const parts = g.indices.map(idx => {
       const m = msgs[idx];
@@ -751,13 +1031,16 @@ function render(keepScroll) {
     }).join('<div class="part-sep"></div>');
     const foldedClass = folded ? ' folded' : '';
     const moreButton = '<button class="more" data-fold="' + g0 + '" type="button" hidden aria-expanded="' + (!folded) + '">' + (folded ? 'Show more' : 'Show less') + '</button>';
+    const outputs = g.role === 'assistant' ? renderOutputs(g.indices) : '';
     const copyButton = '<button class="msg-copy" data-copy="' + g.indices.join(',') + '" aria-label="Copy message" title="Copy message">' + MESSAGE_COPY_ICON + '</button>';
     const footer = messageFooter(msgs[g.indices[g.indices.length - 1]]);
     const foldLines = foldLinesForRole(g.role);
-    frag.push('<div class="msg ' + g.role + foldedClass + '" style="--message-fold-lines:' + foldLines + '" data-i="' + g0 + '" data-day="' + (day || '') + '"><div class="bodywrap">' + parts + '</div>' + moreButton + footer + copyButton + '</div>');
+    const filterHidden = filter !== 'all' && g.role !== filter ? ' filter-hidden' : '';
+    frag.push('<div class="msg ' + g.role + filterHidden + foldedClass + '" style="--message-fold-lines:' + foldLines + '" data-i="' + g0 + '" data-day="' + (day || '') + '"><div class="bodywrap">' + parts + '</div>' + moreButton + outputs + footer + copyButton + '</div>');
   }
   frag.push('<div class="bottom-spacer" aria-hidden="true"></div>');
   chat.insertAdjacentHTML('beforeend', frag.join(''));
+  applyFilterVisibility();
   syncFoldControls();
   const rall = $('rall');
   if (rall) rall.onclick = () => { renderAll = true; render(); };
@@ -780,6 +1063,24 @@ function render(keepScroll) {
       btn.innerHTML = MESSAGE_COPY_ICON;
       btn.title = 'Copy message';
       btn.setAttribute('aria-label', 'Copy message');
+    }, 1400);
+  });
+  chat.querySelectorAll('[data-output-open]').forEach(btn => btn.onclick = (e) => {
+    e.stopPropagation();
+    vscodeApi.postMessage({ type:'openLink', href:btn.dataset.outputOpen });
+  });
+  chat.querySelectorAll('[data-output-copy]').forEach(btn => btn.onclick = (e) => {
+    e.stopPropagation();
+    vscodeApi.postMessage({ type:'copyOutput', value:btn.dataset.outputCopy });
+    const originalTitle = btn.title;
+    btn.innerHTML = '<span class="copied-mark" aria-hidden="true">✓</span>';
+    btn.title = 'Copied';
+    btn.setAttribute('aria-label', 'Copied');
+    setTimeout(() => {
+      if (!btn.isConnected) return;
+      btn.innerHTML = MESSAGE_COPY_ICON;
+      btn.title = originalTitle;
+      btn.setAttribute('aria-label', originalTitle);
     }, 1400);
   });
   // Long bubbles expand only through their own control, matching the
@@ -814,7 +1115,7 @@ function updateMatches(jump) {
 }
 
 function currentMessage() {
-  const bubbles = Array.from($('chat').querySelectorAll('.msg'));
+  const bubbles = Array.from($('chat').querySelectorAll('.msg:not(.filter-hidden)'));
   const target = $('chat').getBoundingClientRect().top + $('chat').clientHeight * 0.42;
   let current = bubbles[0];
   for (const bubble of bubbles) {
@@ -873,6 +1174,7 @@ window.addEventListener('message', e => {
   if (m.type === 'find') { applyFind(m); return; }
   if (m.type === 'update') {
     DATA.messages = m.messages;
+    DATA.outputs = m.outputs || DATA.messages.map(() => []);
     DATA.firstTs = m.firstTs;
     DATA.lastTs = m.lastTs;
     setRefreshing(false);
@@ -890,11 +1192,22 @@ function setRefreshing(value) {
   btn.setAttribute('aria-busy', value ? 'true' : 'false');
 }
 
+function setReaderScale(next) {
+  readerScale = Math.min(1.25, Math.max(0.85, Math.round(next * 20) / 20));
+  document.body.style.setProperty('--reader-scale', readerScale);
+  vscodeApi.setState({ ...savedViewerState, readerScale });
+}
+
 $('refreshViewer').onclick = () => {
   if ($('refreshViewer').disabled) return;
   setRefreshing(true);
   vscodeApi.postMessage({ type:'refresh' });
 };
+$('revealInTree').onclick = () => vscodeApi.postMessage({ type:'revealInTree' });
+$('openClaudeCode').onclick = () => vscodeApi.postMessage({ type:'openClaudeCode' });
+$('resumeTerminal').onclick = () => vscodeApi.postMessage({ type:'resume' });
+$('fontDown').onclick = () => setReaderScale(readerScale - 0.05);
+$('fontUp').onclick = () => setReaderScale(readerScale + 0.05);
 $('copyConversation').onclick = () => vscodeApi.postMessage({ type:'copy' });
 $('searchToggle').onclick = () => {
   $('searchbar').classList.toggle('open');
@@ -927,8 +1240,7 @@ $('clearSearch').onclick = () => {
   }
 };
 document.querySelectorAll('[data-f]').forEach(b => b.onclick = () => {
-  document.querySelectorAll('[data-f]').forEach(x => x.classList.remove('on'));
-  b.classList.add('on'); filter = b.dataset.f; currentMatch = 0; render(true);
+  setFilter(b.dataset.f);
 });
 document.addEventListener('click', e => {
   const attachment = e.target.closest && e.target.closest('[data-attachment]');
@@ -980,4 +1292,4 @@ if (DATA.find) applyFind(DATA.find);
   }
 }
 
-module.exports = { ConversationViewer };
+module.exports = { ConversationViewer, extractMessageOutputs };

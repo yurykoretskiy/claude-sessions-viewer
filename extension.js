@@ -4,6 +4,7 @@ const path = require('path');
 const os = require('os');
 const { indexAll, isAutomationSession } = require('./indexer');
 const { ConversationViewer } = require('./viewer');
+const { SessionsWebviewProvider } = require('./sessions-view');
 
 const TIMELINE_TITLE_MAX = 48;
 const LIVE_WINDOW_MS = 5 * 60 * 1000;
@@ -74,18 +75,41 @@ function tooltipDuration(startIso, endIso) {
   return `~${Math.floor(hours / 24)}d (${exact})`;
 }
 
-function tooltipMessageLines(session) {
+function wrapTooltipText(value, maxChars = 72) {
+  const words = String(value || '').split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = '';
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word;
+    if (line && next.length > maxChars) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = next;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+function tooltipMessageExcerpt(session) {
   const head = String(session.lastMessage || session.lastPrompt || '').replace(/\s+/g, ' ').trim();
-  if (!head) return ['No readable message'];
+  if (!head) return { start: ['No readable message'], end: [] };
   const totalLength = Number(session.lastMessageLength) || head.length;
   const tail = String(session.lastMessageTail || '').replace(/\s+/g, ' ').trim();
-  if (!tail || totalLength <= head.length) return [head];
+  if (!tail || totalLength <= head.length) return { start: wrapTooltipText(head), end: [] };
 
-  // If the cached head and tail overlap, remove the duplicate section while
-  // retaining the true ending. Long messages show their opening and ending.
+  const start = wrapTooltipText(head).slice(0, 2);
+  if (start.length) start[start.length - 1] += '…';
+
+  // Keep the real ending visible without parsing the full transcript on hover.
+  // The indexer stores a compact tail specifically for this preview.
   const overlap = Math.max(0, head.length + tail.length - totalLength);
   const ending = tail.slice(overlap).trimStart();
-  return ending ? [`${head}…`, `…${ending}`] : [`${head}…`];
+  if (!ending) return { start, end: [] };
+  const end = wrapTooltipText(ending).slice(-4);
+  if (end.length) end[0] = `…${end[0]}`;
+  return { start, end };
 }
 
 // Two different projects can share a folder basename (e.g. two "backend"
@@ -228,6 +252,8 @@ class SessionTreeProvider {
       timelineEnabled: c.get('timeline.enabled', false),
       revealEnabled: c.get('reveal.enabled', true),
       revealOpenConversation: c.get('reveal.openConversation', true),
+      userLabel: String(c.get('userLabel', 'USER') || 'USER').trim().slice(0, 40) || 'USER',
+      agentLabel: String(c.get('agentLabel', 'CLAUDE') || 'CLAUDE').trim().slice(0, 40) || 'CLAUDE',
     };
   }
 
@@ -452,9 +478,12 @@ class SessionTreeProvider {
       const countPart = `(${g.sessions.length})`;
       const statusPart = exists ? '' : 'gone';
       item.description = [parentHint, countPart, statusPart].filter(Boolean).join(' · ');
-      // Folder rows are navigation anchors, not activity indicators. Keep
-      // their icon neutral; live state belongs on the session row itself.
-      item.iconPath = new vscode.ThemeIcon('folder');
+      // Folder rows are navigation anchors, not activity indicators. Use a
+      // folder-only asset so the expand arrow is the only disclosure signal.
+      item.iconPath = {
+        light: vscode.Uri.joinPath(this.context.extensionUri, 'assets', 'folder-tree-light.svg'),
+        dark: vscode.Uri.joinPath(this.context.extensionUri, 'assets', 'folder-tree-dark.svg'),
+      };
       item.contextValue = 'folder';
       item.tooltip = exists
         ? g.folderPath
@@ -500,16 +529,29 @@ class SessionTreeProvider {
       tooltip.appendText(text);
       tooltip.appendMarkdown('  \n');
     };
-    appendLine(`Started · ${tooltipDate(firstTs)}`);
-    appendLine(`Last message · ${s.lastMessageRole === 'assistant' ? 'Claude' : 'You'} · ${tooltipDate(lastTs)}`);
+    const excerpt = tooltipMessageExcerpt(s);
+    appendLine('Last message');
     tooltip.appendMarkdown('\n');
-    for (const line of tooltipMessageLines(s)) appendLine(line);
+    if (excerpt.end.length) tooltip.appendMarkdown('`START`  \n');
+    for (const line of excerpt.start) {
+      tooltip.appendText(line);
+      tooltip.appendMarkdown('  \n');
+    }
+    if (excerpt.end.length) {
+      tooltip.appendMarkdown('\n...  \n\n`END`  \n');
+      for (const line of excerpt.end) {
+        tooltip.appendText(line);
+        tooltip.appendMarkdown('  \n');
+      }
+    }
     tooltip.appendMarkdown('\n');
-    appendLine(`Duration      ${tooltipDuration(firstTs, lastTs)}`);
-    appendLine(`Messages      ${count}`);
+    const speaker = s.lastMessageRole === 'assistant' ? this.config.agentLabel : this.config.userLabel;
+    appendLine(`${speaker} · ${tooltipDate(lastTs)}`);
     tooltip.appendMarkdown('\n');
-    appendLine('Session ID');
-    appendLine(s.id);
+    appendLine(`Duration · ${tooltipDuration(firstTs, lastTs)}`);
+    appendLine(`Messages · ${count}`);
+    tooltip.appendMarkdown('\n');
+    appendLine(`Session ID · ${s.id}`);
     item.tooltip = tooltip;
     // Click opens the read-only conversation viewer (POC v3 flow). Resuming
     // stays explicit — the ▶ button in the viewer or the context menu here.
@@ -562,6 +604,75 @@ async function openClaudeCodePanel(sessionId) {
   }
 }
 
+async function openCodexPanel(sessionId) {
+  if (!SESSION_ID_RE.test(sessionId || '')) {
+    vscode.window.showErrorMessage('Session Viewer: refusing to open — session id is not a valid UUID.');
+    return false;
+  }
+  if (vscode.extensions && !vscode.extensions.getExtension('openai.chatgpt')) {
+    vscode.window.showWarningMessage('Session Viewer: the official Codex extension is not installed.');
+    return false;
+  }
+  try {
+    const uri = vscode.Uri.file(`/local/${sessionId}`).with({
+      scheme: 'openai-codex',
+      authority: 'route',
+    });
+    await vscode.commands.executeCommand('vscode.openWith', uri, 'chatgpt.conversationEditor');
+    return true;
+  } catch (error) {
+    vscode.window.showWarningMessage(`Session Viewer: could not open the Codex session — ${error.message}`);
+    return false;
+  }
+}
+
+async function openNewClaudeCodePanel() {
+  if (vscode.extensions && !vscode.extensions.getExtension('anthropic.claude-code')) {
+    vscode.window.showWarningMessage('Claude Sessions: the official Claude Code extension is not installed.');
+    return false;
+  }
+  try {
+    await vscode.commands.executeCommand('claude-vscode.newConversation');
+    return true;
+  } catch {
+    try {
+      await vscode.commands.executeCommand('claude-vscode.editor.open');
+      return true;
+    } catch (error) {
+      vscode.window.showWarningMessage(
+        `Claude Sessions: could not open a new Claude Code conversation — ${error.message}`
+      );
+      return false;
+    }
+  }
+}
+
+async function openNewClaudeCodeInFolder(folderPath, panelFlagFile) {
+  if (!folderPath) return false;
+  try {
+    if (!fs.statSync(folderPath).isDirectory()) throw new Error('not a directory');
+  } catch {
+    vscode.window.showErrorMessage(`Claude Sessions: folder no longer exists: ${folderPath}`);
+    return false;
+  }
+
+  const currentFolders = vscode.workspace.workspaceFolders || [];
+  const inCurrentWorkspace = currentFolders.some((folder) => pathContains(folder.uri.fsPath, folderPath));
+  if (inCurrentWorkspace) return openNewClaudeCodePanel();
+
+  try {
+    fs.mkdirSync(path.dirname(panelFlagFile), { recursive: true });
+    fs.writeFileSync(panelFlagFile, JSON.stringify({ action: 'new', folder: folderPath, ts: Date.now() }));
+  } catch (error) {
+    vscode.window.showErrorMessage(`Claude Sessions: could not prepare the new window — ${error.message}`);
+    return false;
+  }
+  await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(folderPath), {
+    forceNewWindow: true,
+  });
+  return true;
+}
+
 async function openSessionInClaudeCode(session, panelFlagFile) {
   if (!session || !session.cwd) {
     vscode.window.showErrorMessage('Claude Sessions: this session has no recorded working folder.');
@@ -571,6 +682,10 @@ async function openSessionInClaudeCode(session, panelFlagFile) {
     vscode.window.showErrorMessage('Claude Sessions: refusing to open — session id is not a valid UUID.');
     return false;
   }
+  // Home-directory sessions are intentionally "No project" sessions. Open
+  // the official conversation directly; never mount the whole home directory
+  // as the Explorer workspace just to review it.
+  if (session.cwd === os.homedir()) return openClaudeCodePanel(session.id);
   try {
     if (!fs.statSync(session.cwd).isDirectory()) throw new Error('not a directory');
   } catch {
@@ -621,27 +736,78 @@ async function maybeShowFirstRunReviewChoice(context) {
 
 function activate(context) {
   const provider = new SessionTreeProvider(context);
-  const view = vscode.window.createTreeView('claudeSessions.tree', {
-    treeDataProvider: provider,
-    showCollapseAll: false,
+  const viewer = new ConversationViewer(context);
+  const panelFlagFile = path.join(context.globalStorageUri.fsPath, 'open-panel-flag.json');
+  const sessionForAction = (session) => ({
+    ...session.raw,
+    cwd: session.cwd,
+    source: session.source,
   });
-  context.subscriptions.push(view);
-  provider.view = view;
-  provider.updateModeUi();
+  const sidebar = new SessionsWebviewProvider(context, provider, {
+    open: async (session) => {
+      await viewer.open(sessionForAction(session), session.title, session.folderLabel);
+    },
+    official: async (session) => {
+      if (session.source === 'codex') return openCodexPanel(session.id);
+      return openSessionInClaudeCode(sessionForAction(session), panelFlagFile);
+    },
+    resume: async (session) => {
+      if (!SESSION_ID_RE.test(session.id)) throw new Error('refusing to resume — session id is not a valid UUID.');
+      try {
+        if (!fs.statSync(session.cwd).isDirectory()) throw new Error('not a directory');
+      } catch {
+        throw new Error(`cannot resume because the project folder no longer exists: ${session.cwd}`);
+      }
+      const command = session.source === 'codex'
+        ? `codex resume ${session.id}`
+        : `claude --resume ${session.id}`;
+      openClaudeTerminal(session.cwd, `${session.source} · ${session.folderLabel}`, command);
+    },
+    copy: async (session) => {
+      await vscode.env.clipboard.writeText(session.file);
+      return 'Copied session file path';
+    },
+  });
   context.subscriptions.push(
-    view.onDidChangeSelection((e) => {
-      const node = e.selection && e.selection[0];
-      provider.setSelectionInMemory(node);
+    vscode.window.registerWebviewViewProvider('claudeSessions.tree', sidebar, {
+      webviewOptions: { retainContextWhenHidden: true },
     })
   );
 
-  const viewer = new ConversationViewer(context);
-  const panelFlagFile = path.join(context.globalStorageUri.fsPath, 'open-panel-flag.json');
+  const revealSessionInTree = async (sessionId) => {
+    const revealed = await sidebar.revealSession(sessionId);
+    if (!revealed) vscode.window.showWarningMessage('Session Viewer: this session is no longer available. Refresh to scan again.');
+    return revealed;
+  };
+
+  // Which indexed session does the focused editor tab show? Shared by the
+  // status-bar reveal and the tab context-menu entries so all of them agree on
+  // what "this session" means. Only the Claude index is touched here — the
+  // Codex scan is not involved, so this stays cheap.
+  // `matched` is false when nothing could be tied to the tab and we fell back
+  // to the most recent session; callers decide whether to say so.
+  const resolveActiveTabSession = async () => {
+    await provider.refreshAndLoad();
+    const all = provider.groups.flatMap((group) =>
+      group.sessions.map((session) => ({ kind: 'session', session, group }))
+    );
+    if (!all.length) return null;
+    const activeTab = vscode.window.tabGroups.activeTabGroup.activeTab;
+    const titleMatch = provider.findByActiveTabTitle(all, activeTab ? activeTab.label : '');
+    if (titleMatch) return { node: titleMatch, matched: true };
+    const now = Date.now();
+    const recent = all
+      .filter((n) => isLiveSession(n.session, now))
+      .sort((a, b) => b.session.mtimeMs - a.session.mtimeMs);
+    if (recent.length) return { node: recent[0], matched: true };
+    const newest = [...all].sort((a, b) => (b.session.mtimeMs || 0) - (a.session.mtimeMs || 0))[0];
+    return { node: newest, matched: false };
+  };
 
   // Always-available entry point: status-bar ✳ reveals the current session.
   const statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90);
   statusItem.text = '$(sparkle)';
-  statusItem.tooltip = 'Reveal current Claude session in the tree';
+  statusItem.tooltip = 'Reveal current Claude session in Session Viewer';
   statusItem.command = 'claudeSessions.revealCurrent';
   const updateRevealStatus = () => {
     if (vscode.workspace.getConfiguration('claudeSessionsViewer').get('reveal.enabled', true)) statusItem.show();
@@ -652,15 +818,15 @@ function activate(context) {
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('claudeSessionsViewer.reveal.enabled')) updateRevealStatus();
-      if (e.affectsConfiguration('claudeSessionsViewer.promptChildren.enabled')) provider.refresh();
-      if (e.affectsConfiguration('claudeSessionsViewer.showAutomationSessions')) provider.refresh();
+      if (e.affectsConfiguration('claudeSessionsViewer.promptChildren.enabled')) sidebar.refresh();
+      if (e.affectsConfiguration('claudeSessionsViewer.showAutomationSessions')) sidebar.refresh();
       if (e.affectsConfiguration('claudeSessionsViewer.timeline.enabled')) {
         if (!provider.config.timelineEnabled && provider.treeMode === 'chronological') {
           provider.treeMode = 'folders';
           context.globalState.update('treeMode', 'folders');
         }
         provider.updateModeUi();
-        provider.refresh();
+        sidebar.refresh();
       }
     })
   );
@@ -669,10 +835,20 @@ function activate(context) {
   }, 1200);
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('claudeSessions.refresh', () => provider.refresh()),
+    vscode.commands.registerCommand('claudeSessions.refresh', () => sidebar.refresh()),
 
     vscode.commands.registerCommand('claudeSessions.openSettings', () =>
       vscode.commands.executeCommand('workbench.action.openSettings', '@ext:yurykoretskiy.claude-sessions-viewer')
+    ),
+
+    vscode.commands.registerCommand('claudeSessions.revealViewerSession', (sessionId) =>
+      revealSessionInTree(String(sessionId || ''))
+    ),
+
+    vscode.commands.registerCommand('claudeSessions.openViewerInClaudeCode', (session) =>
+      session && session.source === 'codex'
+        ? openCodexPanel(session.id)
+        : openSessionInClaudeCode(session, panelFlagFile)
     ),
 
     vscode.commands.registerCommand('claudeSessions.expandAll', () => provider.setExpandedAll(true)),
@@ -695,6 +871,14 @@ function activate(context) {
       await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(folderPath), {
         forceNewWindow: true,
       });
+    }),
+
+    vscode.commands.registerCommand('claudeSessions.newClaudeCodeHere', async (arg) => {
+      let folderPath = null;
+      if (arg && arg.fsPath) folderPath = arg.fsPath;
+      else if (arg && arg.kind === 'folder') folderPath = arg.group.folderPath;
+      else if (provider.workspaceRoot) folderPath = provider.workspaceRoot;
+      await openNewClaudeCodeInFolder(folderPath, panelFlagFile);
     }),
 
     vscode.commands.registerCommand('claudeSessions.newHere', (arg) => {
@@ -728,12 +912,7 @@ function activate(context) {
     // Timeline row -> jump to the session's place in the folder tree.
     vscode.commands.registerCommand('claudeSessions.showInFolders', async (node) => {
       if (!node || node.kind !== 'session') return;
-      const id = node.session.id;
-      if (provider.treeMode !== 'folders') {
-        await provider.toggleGrouping();
-      }
-      await provider.ensureLoaded();
-      await provider.revealSessionById(id);
+      await revealSessionInTree(node.session.id);
     }),
 
     vscode.commands.registerCommand('claudeSessions.revealCurrent', async () => {
@@ -743,52 +922,69 @@ function activate(context) {
       }
       // "Current session" = the transcript being actively written (newest
       // mtime). Fresh index first so mtimes are current.
-      await provider.refreshAndLoad();
-      const all = provider.allSessions();
-      if (!all.length) {
+      const resolved = await resolveActiveTabSession();
+      if (!resolved) {
         vscode.window.showInformationMessage('Claude Sessions: no sessions found');
         return;
       }
-      const activeTabTitle = vscode.window.tabGroups.activeTabGroup.activeTab
-        ? vscode.window.tabGroups.activeTabGroup.activeTab.label
-        : '';
-      const titleMatch = provider.findByActiveTabTitle(all, activeTabTitle);
-      const now = Date.now();
-      const recent = all
-        .filter((n) => isLiveSession(n.session, now))
-        .sort((a, b) => b.session.mtimeMs - a.session.mtimeMs);
-      let node;
-      if (titleMatch) {
-        node = titleMatch;
-      } else if (recent.length) {
-        node = recent[0];
-      } else {
-        node = all.sort((a, b) => (b.session.mtimeMs || 0) - (a.session.mtimeMs || 0))[0];
+      if (!resolved.matched) {
         vscode.window.showInformationMessage(
           'Claude Sessions: no session active in the last 5 minutes — revealing the most recent one'
         );
       }
-      try {
-        await vscode.commands.executeCommand('workbench.view.extension.claudeSessions');
-        await view.reveal(node, { select: true, expand: true, focus: false });
-        // Cold start after a window reload: reveal can land on a tree that is
-        // still materializing its first render and silently miss. Confirm the
-        // selection took; if not, give the tree a beat and reveal once more.
-        const selected = () =>
-          view.selection && view.selection.some((n) => n && n.session && n.session.id === node.session.id);
-        if (!selected()) {
-          await new Promise((r) => setTimeout(r, 350));
-          await view.reveal(node, { select: true, expand: true, focus: false });
-        }
-        provider.rememberSession(node);
-      } catch (e) {
-        vscode.window.showWarningMessage('Claude Sessions: could not reveal — ' + e.message);
-      }
+      const node = resolved.node;
+      await sidebar.revealSession(node.session.id, 'claude');
+      provider.rememberSession(node);
       if (provider.config.revealOpenConversation) {
-        await viewer.open(node.session, provider.displayTitle(node.session), node.group.label, {
+        await viewer.open({ ...node.session, source: 'claude' }, provider.displayTitle(node.session), node.group.label, {
           beside: true,
         });
       }
+    }),
+
+    // Tab context menu — "open this session in the messenger": the read-only
+    // conversation panel, beside the tab you right-clicked.
+    vscode.commands.registerCommand('claudeSessions.openTabInMessenger', async () => {
+      const resolved = await resolveActiveTabSession();
+      if (!resolved) {
+        vscode.window.showInformationMessage('Session Viewer: no sessions found');
+        return;
+      }
+      const node = resolved.node;
+      provider.rememberSession(node);
+      await viewer.open(
+        { ...node.session, source: 'claude' },
+        provider.displayTitle(node.session),
+        node.group.label,
+        { beside: true }
+      );
+    }),
+
+    // Tab context menu — "open this session in the preview": select it in the
+    // Session Viewer sidebar instead of opening a panel.
+    vscode.commands.registerCommand('claudeSessions.openTabInPreview', async () => {
+      const resolved = await resolveActiveTabSession();
+      if (!resolved) {
+        vscode.window.showInformationMessage('Session Viewer: no sessions found');
+        return;
+      }
+      provider.rememberSession(resolved.node);
+      await revealSessionInTree(resolved.node.session.id);
+    }),
+
+    // Session-row context menu (webview/context) — same two choices, but
+    // targeting the exact row that was right-clicked instead of the active
+    // tab. `ctx` is the row's data-vscode-context payload: { key, cwd }.
+    vscode.commands.registerCommand('claudeSessions.openRowInMessenger', async (ctx) => {
+      const session = sidebar.resolveSession(ctx && ctx.key, ctx && ctx.cwd);
+      if (!session) return;
+      await sidebar.handlers.open(session);
+    }),
+
+    vscode.commands.registerCommand('claudeSessions.openRowInPreview', async (ctx) => {
+      const session = sidebar.resolveSession(ctx && ctx.key, ctx && ctx.cwd);
+      if (!session) return;
+      await revealSessionInTree(session.id);
     }),
 
     vscode.commands.registerCommand('claudeSessions.openConversation', async (node) => {
@@ -835,17 +1031,6 @@ function activate(context) {
     }
   } catch {}
 
-  // Refresh on demand only — when the panel becomes visible — rather than
-  // watching the filesystem on a timer. This keeps the tree order stable while
-  // you browse (no rows jumping as sessions write); the grouping and the
-  // newest→oldest-within-folder order are untouched. Locating a session and
-  // opening it still reads its transcript fresh from disk (see viewer.js), and
-  // the reveal command re-indexes before it locates the current session.
-  context.subscriptions.push(
-    view.onDidChangeVisibility((e) => {
-      if (e.visible) provider.refresh();
-    })
-  );
 }
 
 function deactivate() {}
@@ -857,5 +1042,8 @@ module.exports = {
   SessionTreeProvider,
   pathContains,
   openClaudeCodePanel,
+  openCodexPanel,
+  openNewClaudeCodePanel,
+  openNewClaudeCodeInFolder,
   openSessionInClaudeCode,
 };
