@@ -804,6 +804,12 @@ function activate(context) {
     return { node: newest, matched: false };
   };
 
+  // Marks which entry in the toolbar dropdown is the default, so it carries a
+  // checkmark and reads as "the one you get if you don't think about it".
+  // 'both' = reveal in the tree AND open the messenger, the long-standing
+  // behaviour of the ✳ button before it became a dropdown.
+  vscode.commands.executeCommand('setContext', 'claudeSessions.defaultOpenTarget', 'both');
+
   // Always-available entry point: status-bar ✳ reveals the current session.
   const statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90);
   statusItem.text = '$(sparkle)';

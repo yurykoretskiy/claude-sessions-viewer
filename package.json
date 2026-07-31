@@ -2,7 +2,7 @@
   "name": "claude-sessions-viewer",
   "displayName": "Session Viewer",
   "description": "Browse Claude Code and Codex sessions together by date or project folder. Read-only, local, zero dependencies.",
-  "version": "1.20.1",
+  "version": "1.20.2",
   "publisher": "yurykoretskiy",
   "license": "MIT",
   "engines": {
@@ -148,26 +148,47 @@
       },
       {
         "command": "claudeSessions.openTabInMessenger",
-        "category": "Session Viewer",
-        "title": "Open this session in Messenger view"
+        "title": "Session Viewer: Open in Messenger View"
       },
       {
         "command": "claudeSessions.openTabInPreview",
-        "category": "Session Viewer",
-        "title": "Open this session in preview"
+        "title": "Session Viewer: Open in Sessions Tree View"
       },
       {
         "command": "claudeSessions.openRowInMessenger",
-        "category": "Session Viewer",
-        "title": "Open this session in Messenger view"
+        "title": "Session Viewer: Open in Messenger View"
       },
       {
         "command": "claudeSessions.openRowInPreview",
-        "category": "Session Viewer",
-        "title": "Open this session in preview"
+        "title": "Session Viewer: Open in Sessions Tree View"
+      }
+    ],
+    "submenus": [
+      {
+        "id": "claudeSessions.openTargets",
+        "label": "Session Viewer: Open session",
+        "icon": {
+          "light": "assets/mascot-prominent.png",
+          "dark": "assets/mascot-prominent.png"
+        }
       }
     ],
     "menus": {
+      "claudeSessions.openTargets": [
+        {
+          "command": "claudeSessions.revealCurrent",
+          "group": "navigation@1",
+          "toggled": "claudeSessions.defaultOpenTarget == 'both'"
+        },
+        {
+          "command": "claudeSessions.openTabInMessenger",
+          "group": "navigation@2"
+        },
+        {
+          "command": "claudeSessions.openTabInPreview",
+          "group": "navigation@3"
+        }
+      ],
       "explorer/context": [
         {
           "command": "claudeSessions.newHere",
@@ -182,7 +203,7 @@
       ],
       "editor/title": [
         {
-          "command": "claudeSessions.revealCurrent",
+          "submenu": "claudeSessions.openTargets",
           "when": "activeWebviewPanelId == 'claudeVSCodePanel' && config.claudeSessionsViewer.reveal.enabled",
           "group": "navigation@1"
         }
